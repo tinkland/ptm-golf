@@ -849,13 +849,12 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         <div className="flex flex-col gap-2">
           {COMPETITIONS.some((c) => c.id === "best-ball-teams") && (
             <button
-              onClick={() => roundTab === 0 && (() => {
+              onClick={() => {
                 const roundPlayers = rounds[roundTab].groups.flatMap((g) => g.playerIds).map((pid) => players.find((p) => p.id === pid)).filter(Boolean);
                 const newTeams = generateRandomTeams(roundPlayers);
                 const updatedRound = { ...rounds[roundTab], bestBallTeams: newTeams };
                 setRounds(rounds.map((r) => (r.id === rounds[roundTab].id ? updatedRound : r)));
-              })()}
-              disabled={roundTab > 0}
+              }}
               className="w-full py-2 rounded-lg text-sm font-medium"
               style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
             >
