@@ -1394,38 +1394,62 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
         </div>
       </div>
 
+      {/* Daily Game Winners - Admin Only */}
+      {(() => {
+        const dailyGames = dayOneRound.games?.filter((g) => ["sandy-saver", "snake", "joker"].includes(g.templateId)) || [];
+        if (dailyGames.length === 0) return null;
+
+        return (
+          <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
+            <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>🏆 Daily Game Winners</h3>
+            <div className="space-y-4">
+              {dailyGames.map((game) => (
+                <div key={game.id}>
+                  <label className="text-sm font-medium block mb-2">{game.emoji} {game.name}</label>
+                  <select
+                    value={gameWinners[`daily-${game.templateId}`] || ""}
+                    onChange={(e) => setGameWinners({ ...gameWinners, [`daily-${game.templateId}`]: e.target.value })}
+                    className="w-full text-sm rounded px-3 py-2"
+                    style={{ border: `1px solid ${COLORS.line}` }}
+                  >
+                    <option value="">Select winner...</option>
+                    {leaderboard.map((entry) => (
+                      <option key={entry.player.id} value={entry.player.id}>
+                        {entry.player.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* On-Course Game Winners */}
       {onCourseGames.length > 0 && (
         <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
-          <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>On-Course Game Winners</h3>
-          {onCourseGames.map((game) => {
-            const holesForGame = game.holes || [];
-            return (
-              <div key={game.id} className="mb-4">
-                <p className="text-sm font-medium mb-2">{game.emoji} {game.name}</p>
-                <div className="space-y-2">
-                  {holesForGame.map((hole) => (
-                    <div key={hole} className="flex items-center gap-2">
-                      <label className="text-xs w-12">Hole {hole}:</label>
-                      <select
-                        value={gameWinners[`${game.id}-${hole}`] || ""}
-                        onChange={(e) => setGameWinners({ ...gameWinners, [`${game.id}-${hole}`]: e.target.value })}
-                        className="flex-1 text-sm rounded px-2 py-1"
-                        style={{ border: `1px solid ${COLORS.line}` }}
-                      >
-                        <option value="">Select winner...</option>
-                        {leaderboard.map((entry) => (
-                          <option key={entry.player.id} value={entry.player.id}>
-                            {entry.player.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+          <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>⛳ On-Course Game Winners</h3>
+          <div className="space-y-4">
+            {onCourseGames.map((game) => (
+              <div key={game.id}>
+                <label className="text-sm font-medium block mb-2">{game.emoji} {game.name}</label>
+                <select
+                  value={gameWinners[`oncourse-${game.templateId}`] || ""}
+                  onChange={(e) => setGameWinners({ ...gameWinners, [`oncourse-${game.templateId}`]: e.target.value })}
+                  className="w-full text-sm rounded px-3 py-2"
+                  style={{ border: `1px solid ${COLORS.line}` }}
+                >
+                  <option value="">Select winner...</option>
+                  {leaderboard.map((entry) => (
+                    <option key={entry.player.id} value={entry.player.id}>
+                      {entry.player.name}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       )}
 
