@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <!-- Background -->
+  <rect width="192" height="192" fill="#1F3D2B" rx="45"/>
+
+  <!-- Golf ball -->
+  <circle cx="96" cy="85" r="35" fill="#F6F1E4"/>
+
+  <!-- Golf ball dimples -->
+  <circle cx="80" cy="70" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="96" cy="65" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="112" cy="70" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="75" cy="85" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="117" cy="85" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="80" cy="100" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="96" cy="105" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+  <circle cx="112" cy="100" r="3.5" fill="#1F3D2B" opacity="0.6"/>
+
+  <!-- Golf flag pole -->
+  <rect x="92" y="115" width="8" height="45" fill="#C7972F"/>
+
+  <!-- Golf flag -->
+  <rect x="100" y="115" width="35" height="20" fill="#C7972F" rx="3"/>
+</svg>
