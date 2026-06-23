@@ -850,7 +850,11 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           {COMPETITIONS.some((c) => c.id === "best-ball-teams") && (
             <button
               onClick={() => {
-                const roundPlayers = rounds[roundTab].groups.flatMap((g) => g.playerIds).map((pid) => players.find((p) => p.id === pid)).filter(Boolean);
+                // Get all players in the round (from groups if assigned, otherwise all players)
+                const allRoundPlayerIds = rounds[roundTab].groups?.flatMap((g) => g.playerIds) || [];
+                const roundPlayers = allRoundPlayerIds.length > 0
+                  ? allRoundPlayerIds.map((pid) => players.find((p) => p.id === pid)).filter(Boolean)
+                  : players.filter((p) => p.name);
                 const newTeams = generateRandomTeams(roundPlayers);
                 const updatedRound = { ...rounds[roundTab], bestBallTeams: newTeams };
                 setRounds(rounds.map((r) => (r.id === rounds[roundTab].id ? updatedRound : r)));
@@ -965,7 +969,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
             return (
               <div key={t.templateId}>
                 <div className="rounded-lg p-2.5" style={{ backgroundColor: active ? COLORS.goldPale : COLORS.cream, border: `1px solid ${active ? COLORS.gold : COLORS.line}` }}>
-                  <button onClick={() => roundTab === 0 && toggleTemplate(t)} className="flex items-center gap-2 flex-1 text-left w-full" disabled={roundTab > 0}>
+                  <button onClick={() => toggleTemplate(t)} className="flex items-center gap-2 flex-1 text-left w-full">
                     <span className="text-lg">{t.emoji}</span>
                     <span>
                       <span className="text-sm font-medium block" style={{ color: COLORS.charcoal }}>{t.name}</span>
