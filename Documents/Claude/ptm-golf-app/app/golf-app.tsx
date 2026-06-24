@@ -2718,20 +2718,20 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
 
   // Handle swipe-to-refresh
   useEffect(() => {
+    let touchStartYValue = 0;
+
     const handleTouchStart = (e: TouchEvent) => {
-      touchStartY.current = e.touches[0].clientY;
+      touchStartYValue = e.touches[0].clientY;
     };
 
     const handleTouchEnd = async (e: TouchEvent) => {
       const touchEndY = e.changedTouches[0].clientY;
-      const scrollTop = (e.target as any)?.scrollTop || window.scrollY;
+      const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
       // Pull down swipe and at top of page
-      if (touchEndY - touchStartY.current > 50 && scrollTop < 50) {
+      if (touchEndY - touchStartYValue > 50 && scrollTop < 50) {
         setIsRefreshing(true);
-        await new Promise(resolve => setTimeout(resolve, 300)); // Brief animation
-        // Manually refresh
-        if (eventId && selectedRoundId && selectedRound) {
-          try {
+        try {
+          if (eventId && selectedRoundId && selectedRound) {
             const merged = { playerScores: {}, jokerHoles: {} };
             for (const group of selectedRound.groups) {
               const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
@@ -2739,20 +2739,21 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
               if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
             }
             setFreshScores(merged);
-          } catch (err) {
-            console.warn("Swipe refresh failed:", err);
           }
+        } catch (err) {
+          console.warn("Swipe refresh failed:", err);
+        } finally {
+          setIsRefreshing(false);
         }
-        setIsRefreshing(false);
       }
     };
 
-    document.addEventListener('touchstart', handleTouchStart, false);
-    document.addEventListener('touchend', handleTouchEnd, false);
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
-      document.removeEventListener('touchstart', handleTouchStart, false);
-      document.removeEventListener('touchend', handleTouchEnd, false);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [eventId, selectedRoundId, selectedRound]);
 
