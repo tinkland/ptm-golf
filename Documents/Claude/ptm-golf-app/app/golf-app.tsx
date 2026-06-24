@@ -2515,16 +2515,20 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
           config.rounds.forEach((rnd) => {
             let so = null;
 
+            // Try to get scores from all groups (allScoresByRound has synced data from Firebase)
+            // This shows overall scores across ALL devices/groups, not just current device
             if (rnd.id === currentRoundId) {
-              // Current round uses live scores
-              so = currentScores;
+              // Current round: try allScoresByRound first (synced scores from all groups),
+              // then fall back to currentScores (local live scores) for just this device
+              const group = getPlayerGroup(rnd, p.id);
+              so = (allScoresByRound[rnd.id] && allScoresByRound[rnd.id][group.id]) || currentScores;
             } else {
-              // Past rounds: try to get preserved scores first, then fallback to group lookup
+              // Past rounds: try preserved scores first, then allScoresByRound lookup
               const preservedKey = `${rnd.id}_preserved`;
               if (allScoresByRound[preservedKey]) {
                 so = allScoresByRound[preservedKey];
               } else {
-                // Fallback to original group-based lookup
+                // Fallback to group-based lookup
                 const group = getPlayerGroup(rnd, p.id);
                 so = group && allScoresByRound[rnd.id] && allScoresByRound[rnd.id][group.id];
               }
@@ -2579,7 +2583,9 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
         else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, { [r.id]: { [group.id]: so } }, r.id, so) : 0;
         else if (competition === "best-ball-teams") finalScore = stats.dayTotal; // Teams handled separately above
         else if (competition === "skins") {
-          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: { [group.id]: so } }, r.id, so, config.players, true);
+          // For skins, need ALL scores from this round (all groups), not just current group
+          const roundAllScores = allScoresByRound[r.id] || {};
+          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: roundAllScores }, r.id, currentScores, config.players, true);
           finalScore = skinsData.totalWon;
         }
         return { id: p.id, name: p.name, groupName: group?.name || "–", pts: finalScore, gross: stats.gross, thru: stats.thru, jokerBonus: stats.jokerBonus, jokerHole: stats.jokerHole, skinsData };
@@ -3200,8 +3206,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     );
   }
 
-  // End of Day Processing
-  if (showEndOfDay && config) {
+  // End of Day Processing (admin only)
+  if (showEndOfDay && config && isAdmin) {
     const currentRound = config.rounds.find((r) => r.id === activeRoundId);
     const nextRound = config.rounds[config.rounds.findIndex((r) => r.id === activeRoundId) + 1];
     return (
