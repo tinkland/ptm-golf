@@ -3036,9 +3036,14 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
         setAllScoresByRound(result);
       }
 
-      // Show end-of-day processing screen
+      // Show end-of-day processing screen (admin only) or go back to main (scorers)
       setFinishingRound(false);
-      setShowEndOfDay(true);
+      if (isAdmin) {
+        setShowEndOfDay(true);
+      } else {
+        celebrate("✅ Round submitted! Admin will process results.");
+        setScreen("main");
+      }
     } else {
       setFinishingRound(false);
       celebrate("🎉 All rounds complete!");
