@@ -246,6 +246,10 @@ function calculateRoundSkins(round, players, allowancePct, scoreObj) {
 
   let carryOver = 0; // Number of carried-over skins
 
+  if (!round || !round.course || !round.course.holes) {
+    return { playerSkins, carryOver };
+  }
+
   round.course.holes.forEach((hole) => {
     // Find best score on this hole across all players
     const scoresOnHole = [];
@@ -424,7 +428,7 @@ function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound,
 
     // Apply carry-over from previous round to first hole with a winner
     let carryOverApplied = false;
-    if (carryOverFromPreviousRound > 0) {
+    if (carryOverFromPreviousRound > 0 && round.course && round.course.holes) {
       for (const hole of round.course.holes) {
         if (carryOverApplied) break;
 
