@@ -296,11 +296,18 @@ export default function Home() {
     );
   }
 
-  // Check if user has an event to join (eventId in URL)
+  // Check if user has an event to join (eventId in URL or saved in localStorage)
   const params = new URLSearchParams(window.location.search);
-  const hasEventId = params.get("eventId");
+  let eventId = params.get("eventId");
 
-  if (hasEventId) {
+  // If eventId in URL, save it; if not in URL but saved in localStorage, use that
+  if (eventId) {
+    localStorage.setItem("ptm-golf-eventId", eventId);
+  } else if (!eventId && typeof window !== "undefined") {
+    eventId = localStorage.getItem("ptm-golf-eventId");
+  }
+
+  if (eventId) {
     return <GolfApp userId={user.uid} isAdmin={false} />;
   }
 
