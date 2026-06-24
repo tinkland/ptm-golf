@@ -2879,6 +2879,22 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
       const urlEventId = params.get("eventId");
 
       if (urlEventId) {
+        // Try localStorage first (faster and works offline/without Firebase permission)
+        try {
+          const localEvent = localStorage.getItem(`event-${urlEventId}`);
+          if (localEvent) {
+            const evt = JSON.parse(localEvent);
+            setConfig(evt);
+            setEventId(urlEventId);
+            setActiveRoundId(evt.rounds[0]?.id);
+            setScreen("join");
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to load event from localStorage:", err);
+        }
+
+        // Fallback to Firebase if not in localStorage
         try {
           const evt = await getEventFromFirebase(urlEventId);
           if (evt) {
@@ -2889,7 +2905,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
             return;
           }
         } catch (err) {
-          // Firebase load failed - might be permissions (not logged in yet) or network issue
+          // Firebase load failed - might be permissions or network issue
           console.log("Could not load event from Firebase, will show setup screen");
         }
       }
@@ -3082,8 +3098,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
         window.history.replaceState({}, "", `?eventId=${newEventId}`);
       }
 
-      // Save event name to localStorage
-      localStorage.setItem(`event-${newEventId}`, JSON.stringify({ eventName: newConfig.eventName }));
+      // Save full event config to localStorage (so scorers can load it even without Firebase read permission)
+      localStorage.setItem(`event-${newEventId}`, JSON.stringify(configWithIds));
 
       setScreen("event-created");
       celebrate("✅ Event created!");
