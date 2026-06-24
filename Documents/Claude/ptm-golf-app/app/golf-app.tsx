@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, Plus, Minus, X, Target, RefreshCw, Pencil, Check, Swords, LogOut, BarChart3 } from "lucide-react";
-import QRCode from "qrcode.react";
+import { QRCodeSVG as QRCode } from "qrcode.react";
 import { useAuth } from "./auth-provider";
 import { db } from "@/lib/firebase";
 import { collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, Unsubscribe } from "firebase/firestore";
