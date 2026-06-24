@@ -291,21 +291,7 @@ export default function Home() {
     );
   }
 
-  if (adminModeAfterLogin) {
-    return (
-      <GolfApp
-        userId={user.uid}
-        isAdmin={true}
-        onAdminDone={() => {
-          setAdminModeAfterLogin(false);
-          setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
-          setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]"));
-        }}
-      />
-    );
-  }
-
-  // Check if user has an event to join (eventId in URL or saved in localStorage)
+  // Check if user has an event to join (eventId in URL or saved in localStorage) - CHECK FIRST
   const params = new URLSearchParams(window.location.search);
   let eventId = params.get("eventId");
 
@@ -318,6 +304,20 @@ export default function Home() {
 
   if (eventId) {
     return <GolfApp userId={user.uid} isAdmin={false} />;
+  }
+
+  if (adminModeAfterLogin) {
+    return (
+      <GolfApp
+        userId={user.uid}
+        isAdmin={true}
+        onAdminDone={() => {
+          setAdminModeAfterLogin(false);
+          setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
+          setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]"));
+        }}
+      />
+    );
   }
 
   return (
