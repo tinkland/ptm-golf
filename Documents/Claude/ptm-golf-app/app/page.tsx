@@ -302,11 +302,14 @@ export default function Home() {
   // If eventId in URL, save it; if not in URL but saved in localStorage, use that
   if (eventId) {
     localStorage.setItem("ptm-golf-eventId", eventId);
+    console.log("EventId from URL:", eventId); // DEBUG
   } else if (!eventId && typeof window !== "undefined") {
     eventId = localStorage.getItem("ptm-golf-eventId");
+    console.log("EventId from localStorage:", eventId); // DEBUG
   }
 
-  if (eventId) {
+  // Only auto-route to scorer if eventId came from URL or localStorage (not admin creating event)
+  if (eventId && !adminModeAfterLogin) {
     return <GolfApp userId={user.uid} isAdmin={false} />;
   }
 
