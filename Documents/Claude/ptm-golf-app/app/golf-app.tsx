@@ -2690,11 +2690,79 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
 // GameResultsTab Component - Shows comprehensive daily results
 function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScores, eventId, gameEntries = [] }) {
   const [selectedRoundId, setSelectedRoundId] = useState(config.rounds[0]?.id);
+  const [freshScores, setFreshScores] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef(0);
   const allowance = config.allowance.stableford;
   const selectedRound = config.rounds.find((r) => r.id === selectedRoundId);
 
+  // Refresh scores from Firebase when round is selected or component loads
+  useEffect(() => {
+    const refreshScoresFromFirebase = async () => {
+      if (!eventId || !selectedRoundId || !selectedRound) return;
+      try {
+        const merged = { playerScores: {}, jokerHoles: {} };
+        // Load scores from all groups for this round
+        for (const group of selectedRound.groups) {
+          const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
+          if (scores?.playerScores) Object.assign(merged.playerScores, scores.playerScores);
+          if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
+        }
+        setFreshScores(merged);
+      } catch (err) {
+        console.warn("Could not refresh scores from Firebase:", err);
+      }
+    };
+    refreshScoresFromFirebase();
+  }, [selectedRoundId, eventId, selectedRound]);
+
+  // Handle swipe-to-refresh
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY;
+    };
+
+    const handleTouchEnd = async (e: TouchEvent) => {
+      const touchEndY = e.changedTouches[0].clientY;
+      const scrollTop = (e.target as any)?.scrollTop || window.scrollY;
+      // Pull down swipe and at top of page
+      if (touchEndY - touchStartY.current > 50 && scrollTop < 50) {
+        setIsRefreshing(true);
+        await new Promise(resolve => setTimeout(resolve, 300)); // Brief animation
+        // Manually refresh
+        if (eventId && selectedRoundId && selectedRound) {
+          try {
+            const merged = { playerScores: {}, jokerHoles: {} };
+            for (const group of selectedRound.groups) {
+              const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
+              if (scores?.playerScores) Object.assign(merged.playerScores, scores.playerScores);
+              if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
+            }
+            setFreshScores(merged);
+          } catch (err) {
+            console.warn("Swipe refresh failed:", err);
+          }
+        }
+        setIsRefreshing(false);
+      }
+    };
+
+    document.addEventListener('touchstart', handleTouchStart, false);
+    document.addEventListener('touchend', handleTouchEnd, false);
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart, false);
+      document.removeEventListener('touchend', handleTouchEnd, false);
+    };
+  }, [eventId, selectedRoundId, selectedRound]);
+
   const getScoresForRound = (roundId: string) => {
-    // Try localStorage first (both individual round and merged versions)
+    // Use freshly loaded Firebase scores if available (most current)
+    if (freshScores) {
+      return freshScores;
+    }
+
+    // Try localStorage as fallback (both individual round and merged versions)
     try {
       // For current round, check individual round storage first
       if (roundId === currentRoundId) {
@@ -2756,9 +2824,36 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
     return null;
   };
 
+  const handleManualRefresh = async () => {
+    if (!eventId || !selectedRoundId || !selectedRound || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const merged = { playerScores: {}, jokerHoles: {} };
+      for (const group of selectedRound.groups) {
+        const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
+        if (scores?.playerScores) Object.assign(merged.playerScores, scores.playerScores);
+        if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
+      }
+      setFreshScores(merged);
+    } catch (err) {
+      console.warn("Manual refresh failed:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="px-4 py-4 pb-24">
-      <h2 className="font-display text-xl mb-3" style={{ color: COLORS.green }}>📊 Daily Results</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-display text-xl" style={{ color: COLORS.green }}>📊 Daily Results</h2>
+        <button
+          onClick={handleManualRefresh}
+          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          title="Refresh results"
+        >
+          <RefreshCw size={18} style={{ color: COLORS.green }} />
+        </button>
+      </div>
 
       {/* Round Selection */}
       <div className="flex gap-1 mb-4 overflow-x-auto pb-2">
