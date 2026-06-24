@@ -1860,7 +1860,7 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
   return (
     <div className="px-4 py-4 pb-24">
       <div className="rounded-2xl p-4 mb-4 flex items-center justify-between" style={{ backgroundColor: COLORS.green }}>
-        <button onClick={() => setHole((h) => Math.max(1, h - 1))} aria-label="Previous hole">
+        <button onClick={() => { setHole((h) => Math.max(1, h - 1)); window.scrollTo(0, 0); }} aria-label="Previous hole">
           <ChevronLeft size={22} color={COLORS.goldPale} />
         </button>
         <div className="text-center flex-1">
@@ -1870,7 +1870,7 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
             Par {holeData.par} · SI {holeData.si}
           </p>
         </div>
-        <button onClick={() => setHole((h) => Math.min(TOTAL_HOLES, h + 1))} aria-label="Next hole">
+        <button onClick={() => { setHole((h) => Math.min(TOTAL_HOLES, h + 1)); window.scrollTo(0, 0); }} aria-label="Next hole">
           <ChevronRight size={22} color={COLORS.goldPale} />
         </button>
       </div>
@@ -2004,7 +2004,10 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
                   {gross === "PU" ? "0 pts (PU)" : displayPts == null ? "no score" : `${displayPts} pt${displayPts === 1 ? "" : "s"}`}
                 </span>
               </div>
+              {/* Game entry buttons - only show if enabled */}
+              {(round.games?.some((g) => g.templateId === "snake") || round.games?.some((g) => g.templateId === "sandy")) && (
               <div className="flex gap-2 mt-2 text-xs">
+                {round.games?.some((g) => g.templateId === "snake") && (
                 <label className="flex items-center gap-1.5 flex-1" style={{ color: COLORS.charcoal }}>
                   <input
                     type="checkbox"
@@ -2024,6 +2027,8 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
                   />
                   <span>3-putt</span>
                 </label>
+                )}
+                {round.games?.some((g) => g.templateId === "sandy") && (
                 <label className="flex items-center gap-1.5 flex-1" style={{ color: COLORS.charcoal, opacity: gross !== "" && gross != null && Number(gross) <= holeData.par ? 1 : 0.4 }}>
                   <input
                     type="checkbox"
@@ -2044,7 +2049,9 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
                   />
                   <span>Sandy</span>
                 </label>
+                )}
               </div>
+              )}
               <button
                 onClick={() => {
                   if (gross === "PU") {
