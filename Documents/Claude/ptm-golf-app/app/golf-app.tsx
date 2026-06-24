@@ -2442,16 +2442,16 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
 
               team.players.forEach((playerId) => {
                 let so = null;
-                if (round.id === currentRoundId) {
-                  so = currentScores;
+                // Try allScoresByRound first (synced from all groups), then preserved, then current
+                const group = getPlayerGroup(round, playerId);
+                if (group && allScoresByRound[round.id] && allScoresByRound[round.id][group.id]) {
+                  so = allScoresByRound[round.id][group.id];
                 } else {
-                  // Try preserved scores first, then fallback to group-based lookup
                   const preservedKey = `${round.id}_preserved`;
                   if (allScoresByRound[preservedKey]) {
                     so = allScoresByRound[preservedKey];
-                  } else {
-                    const group = getPlayerGroup(round, playerId);
-                    so = group && allScoresByRound[round.id] && allScoresByRound[round.id][group.id];
+                  } else if (round.id === currentRoundId) {
+                    so = currentScores;
                   }
                 }
                 const player = config.players.find(p => p.id === playerId);
@@ -2499,7 +2499,13 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
 
           team.players.forEach((playerId) => {
             const group = getPlayerGroup(r, playerId);
-            const so = group && (r.id === currentRoundId ? currentScores : (allScoresByRound[r.id] && allScoresByRound[r.id][group.id]));
+            // Use allScoresByRound first (synced from all groups), then fallback to current
+            let so = null;
+            if (group && allScoresByRound[r.id] && allScoresByRound[r.id][group.id]) {
+              so = allScoresByRound[r.id][group.id];
+            } else if (r.id === currentRoundId && group) {
+              so = currentScores;
+            }
             const player = config.players.find(p => p.id === playerId);
 
             if (so && player) {
@@ -2720,7 +2726,17 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
     // Fallback to state
     const preservedKey = `${roundId}_preserved`;
     if (allScoresByRound[preservedKey]) return allScoresByRound[preservedKey];
-    if (allScoresByRound[roundId]) return Object.values(allScoresByRound[roundId])[0];
+
+    // Merge all groups from allScoresByRound (like localStorage does)
+    if (allScoresByRound[roundId]) {
+      const merged = { playerScores: {}, jokerHoles: {} };
+      Object.values(allScoresByRound[roundId]).forEach((groupScores: any) => {
+        if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
+        if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
+      });
+      return merged;
+    }
+
     if (roundId === currentRoundId) return currentScores;
 
     return null;
