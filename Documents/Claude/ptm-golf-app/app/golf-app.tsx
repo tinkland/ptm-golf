@@ -29,7 +29,6 @@ const GAME_TEMPLATES = [
   { templateId: "long-putt", name: "Longest putt holed", emoji: "⛳", metric: "highest", unit: "m", description: "Longest putt that actually goes in." },
   { templateId: "sandy", name: "Sandy saver", emoji: "🏖️", metric: "count", unit: "save", description: "Make par or better after your ball was in a bunker." },
   { templateId: "snake", name: "The snake", emoji: "🐍", metric: "latest", unit: "3-putt", description: "Whoever 3-putts most recently holds the snake." },
-  { templateId: "skins", name: "Skins", emoji: "💰", metric: "special", unit: "skins", description: "Win a skin by having the best score on each hole. Ties carry over to next hole." },
 ];
 
 const COMPETITIONS = [
@@ -1389,6 +1388,15 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
                   ? (round.games || []).filter((g) => g.templateId !== "skins-daily")
                   : [...(round.games || []), { id: uid(), templateId: "skins-daily", name: "Skins (Daily)", emoji: "💰", description: "Win skins by having the best score on each hole", carryOverUnawarded: true }];
                 updateRound("games", newGames);
+
+                // If enabling Skins with carry-over, auto-enable on next day too
+                if (!hasSkins && roundTab < rounds.length - 1) {
+                  const nextRound = rounds[roundTab + 1];
+                  if (nextRound && !nextRound.games?.some((g) => g.templateId === "skins-daily")) {
+                    const nextGames = [...(nextRound.games || []), { id: uid(), templateId: "skins-daily", name: "Skins (Daily)", emoji: "💰", description: "Win skins by having the best score on each hole", carryOverUnawarded: true }];
+                    setRounds(rounds.map((r, i) => i === roundTab + 1 ? { ...r, games: nextGames } : r));
+                  }
+                }
               }}
               className="flex items-center gap-2 w-full"
             >
