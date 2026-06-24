@@ -29,6 +29,7 @@ const GAME_TEMPLATES = [
   { templateId: "long-putt", name: "Longest putt holed", emoji: "⛳", metric: "highest", unit: "m", description: "Longest putt that actually goes in." },
   { templateId: "sandy", name: "Sandy saver", emoji: "🏖️", metric: "count", unit: "save", description: "Make par or better after your ball was in a bunker." },
   { templateId: "snake", name: "The snake", emoji: "🐍", metric: "latest", unit: "3-putt", description: "Whoever 3-putts most recently holds the snake." },
+  { templateId: "skins", name: "Skins", emoji: "💰", metric: "special", unit: "skins", description: "Win a skin by having the best score on each hole. Ties carry over to next hole." },
 ];
 
 const COMPETITIONS = [
@@ -36,6 +37,7 @@ const COMPETITIONS = [
   { id: "hardest-six", name: "Hardest and Highest", emoji: "💪", description: "Scores on individual's most difficult 6 holes by handicap" },
   { id: "best-indexed", name: "Best Indexed Score", emoji: "📊", description: "Best score on each hole index across all days" },
   { id: "best-ball-teams", name: "Best Ball Teams", emoji: "🤝", description: "Randomly paired teams across ALL groups" },
+  { id: "skins", name: "Skins Tournament", emoji: "💰", description: "Win a skin by having the best score on each hole. Ties carry over." },
 ];
 
 const DEFAULT_LOGO = "⛳";
@@ -233,6 +235,246 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
   }
 
   return totalScore;
+}
+
+function calculateRoundSkins(round, players, allowancePct, scoreObj) {
+  // Returns { playerSkins: { playerId: { won: number of holes won, awarded: number of times skin awarded } }, carryOver: number }
+  const playerSkins = {};
+  players.forEach((p) => {
+    playerSkins[p.id] = { won: 0, awarded: 0 };
+  });
+
+  let carryOver = 0; // Number of carried-over skins
+
+  round.course.holes.forEach((hole) => {
+    // Find best score on this hole across all players
+    const scoresOnHole = [];
+    players.forEach((p) => {
+      const g = scoreObj?.playerScores?.[p.id]?.[hole.number];
+      if (g !== "" && g != null && g !== "PU") { // Exclude pickups
+        const ph = getPH(round.course, p, allowancePct);
+        const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+        scoresOnHole.push({ playerId: p.id, gross: Number(g), pts });
+      }
+    });
+
+    if (scoresOnHole.length === 0) {
+      carryOver++; // No valid scores, carry over
+      return;
+    }
+
+    // Find best score
+    const bestScore = Math.max(...scoresOnHole.map((s) => s.pts));
+    const winners = scoresOnHole.filter((s) => s.pts === bestScore);
+
+    if (winners.length === 1) {
+      // Clear winner: award skin(s) including carry-overs
+      winners[0].playerId && (playerSkins[winners[0].playerId].won += carryOver + 1);
+      winners[0].playerId && (playerSkins[winners[0].playerId].awarded += 1);
+      carryOver = 0;
+    } else {
+      // Tie: carry over all skins
+      carryOver++;
+    }
+  });
+
+  return { playerSkins, carryOver };
+}
+
+function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRound, currentRoundId, currentScores) {
+  // Returns { playerId: { totalWon: number, timesAwarded: number } }
+  const cumulativeSkins = {};
+  players.forEach((p) => {
+    cumulativeSkins[p.id] = { totalWon: 0, timesAwarded: 0 };
+  });
+
+  let carryOverFromPreviousRound = 0; // Skins that carried over from previous round
+
+  rounds.forEach((round, roundIndex) => {
+    // Collect scores for this round
+    let roundScores = null;
+    let foundScores = false;
+
+    // Try group-based scores first
+    if (round.groups && round.groups.length > 0) {
+      for (const group of round.groups) {
+        if (allScoresByRound[round.id] && allScoresByRound[round.id][group.id]) {
+          roundScores = allScoresByRound[round.id][group.id];
+          foundScores = true;
+          break;
+        }
+      }
+    }
+
+    // Try preserved scores
+    if (!foundScores) {
+      const preservedKey = `${round.id}_preserved`;
+      if (allScoresByRound[preservedKey]) {
+        roundScores = allScoresByRound[preservedKey];
+        foundScores = true;
+      }
+    }
+
+    // For current round, use currentScores
+    if (round.id === currentRoundId) {
+      roundScores = currentScores;
+      foundScores = true;
+    }
+
+    if (!foundScores || !roundScores) {
+      return; // No scores yet for this round
+    }
+
+    // Calculate skins for this round
+    const result = calculateRoundSkins(round, players, allowancePct, roundScores);
+
+    // Apply carry-over from previous round to first hole with a winner
+    let carryOverApplied = false;
+    if (carryOverFromPreviousRound > 0) {
+      for (const hole of round.course.holes) {
+        if (carryOverApplied) break;
+
+        const scoresOnHole = [];
+        players.forEach((p) => {
+          const g = roundScores?.playerScores?.[p.id]?.[hole.number];
+          if (g !== "" && g != null && g !== "PU") {
+            const ph = getPH(round.course, p, allowancePct);
+            const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+            if (pts !== null) {
+              scoresOnHole.push({ playerId: p.id, pts });
+            }
+          }
+        });
+
+        if (scoresOnHole.length > 0) {
+          const bestScore = Math.max(...scoresOnHole.map((s) => s.pts));
+          const winners = scoresOnHole.filter((s) => s.pts === bestScore);
+
+          if (winners.length === 1) {
+            // Clear winner: add carry-over
+            cumulativeSkins[winners[0].playerId].totalWon += carryOverFromPreviousRound;
+            carryOverApplied = true;
+          }
+        }
+      }
+    }
+
+    // Add this round's skins to cumulative
+    Object.keys(result.playerSkins).forEach((playerId) => {
+      cumulativeSkins[playerId].totalWon += result.playerSkins[playerId].won;
+      cumulativeSkins[playerId].timesAwarded += result.playerSkins[playerId].awarded;
+    });
+
+    // Set up carry-over for next round (if enabled)
+    const isLastRound = roundIndex === rounds.length - 1;
+    const nextRound = roundIndex + 1 < rounds.length ? rounds[roundIndex + 1] : null;
+    const skinsGameSettings = round.games?.find((g) => g.templateId === "skins-daily");
+    const carryOverEnabled = skinsGameSettings?.carryOverUnawarded !== false && !isLastRound;
+
+    carryOverFromPreviousRound = carryOverEnabled ? result.carryOver : 0;
+  });
+
+  return cumulativeSkins;
+}
+
+function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound, currentRoundId, currentScores, allPlayers, isCompetition = true) {
+  // Returns { totalWon, timesAwarded } for display as "totalWon(timesAwarded)"
+  // isCompetition: true for Skins Tournament (always carry over), false for daily skins games
+  const cumulativeSkins = {};
+  allPlayers.forEach((p) => {
+    cumulativeSkins[p.id] = { totalWon: 0, timesAwarded: 0 };
+  });
+
+  let carryOverFromPreviousRound = 0;
+
+  rounds.forEach((round, roundIndex) => {
+    // Collect scores for this round
+    let roundScores = null;
+    let foundScores = false;
+
+    if (round.groups && round.groups.length > 0) {
+      for (const group of round.groups) {
+        if (allScoresByRound[round.id] && allScoresByRound[round.id][group.id]) {
+          roundScores = allScoresByRound[round.id][group.id];
+          foundScores = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundScores) {
+      const preservedKey = `${round.id}_preserved`;
+      if (allScoresByRound[preservedKey]) {
+        roundScores = allScoresByRound[preservedKey];
+        foundScores = true;
+      }
+    }
+
+    if (round.id === currentRoundId) {
+      roundScores = currentScores;
+      foundScores = true;
+    }
+
+    if (!foundScores || !roundScores) {
+      return;
+    }
+
+    // Calculate skins for this round
+    const result = calculateRoundSkins(round, allPlayers, allowancePct, roundScores);
+
+    // Apply carry-over from previous round to first hole with a winner
+    let carryOverApplied = false;
+    if (carryOverFromPreviousRound > 0) {
+      for (const hole of round.course.holes) {
+        if (carryOverApplied) break;
+
+        const scoresOnHole = [];
+        allPlayers.forEach((p) => {
+          const g = roundScores?.playerScores?.[p.id]?.[hole.number];
+          if (g !== "" && g != null && g !== "PU") {
+            const ph = getPH(round.course, p, allowancePct);
+            const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+            if (pts !== null) {
+              scoresOnHole.push({ playerId: p.id, pts });
+            }
+          }
+        });
+
+        if (scoresOnHole.length > 0) {
+          const bestScore = Math.max(...scoresOnHole.map((s) => s.pts));
+          const winners = scoresOnHole.filter((s) => s.pts === bestScore);
+
+          if (winners.length === 1) {
+            cumulativeSkins[winners[0].playerId].totalWon += carryOverFromPreviousRound;
+            carryOverApplied = true;
+          }
+        }
+      }
+    }
+
+    // Add this round's skins to cumulative
+    Object.keys(result.playerSkins).forEach((playerId) => {
+      cumulativeSkins[playerId].totalWon += result.playerSkins[playerId].won;
+      cumulativeSkins[playerId].timesAwarded += result.playerSkins[playerId].awarded;
+    });
+
+    // Determine if carry-over should apply to next round
+    const isLastRound = roundIndex === rounds.length - 1;
+    let carryOverEnabled = false;
+
+    if (isCompetition) {
+      // Tournament skins always carry over
+      carryOverEnabled = !isLastRound;
+    } else {
+      // Daily skins: check game configuration
+      const skinsGameSettings = round.games?.find((g) => g.templateId === "skins-daily");
+      carryOverEnabled = skinsGameSettings?.carryOverUnawarded !== false && !isLastRound;
+    }
+
+    carryOverFromPreviousRound = carryOverEnabled ? result.carryOver : 0;
+  });
+
+  return cumulativeSkins[player.id] || { totalWon: 0, timesAwarded: 0 };
 }
 
 function generateRandomTeams(players: any[]) {
@@ -1131,6 +1373,54 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
                   Regenerate Daily Teams
                 </button>
               </>
+            )}
+          </div>
+
+          {/* Skins Daily Game option */}
+          <div className="rounded-lg p-2.5" style={{ backgroundColor: round.games?.some((g) => g.templateId === "skins-daily") ? COLORS.greenPale : COLORS.cream, border: `1px solid ${round.games?.some((g) => g.templateId === "skins-daily") ? COLORS.green : COLORS.line}` }}>
+            <button
+              onClick={() => {
+                const hasSkins = round.games?.some((g) => g.templateId === "skins-daily");
+                const newGames = hasSkins
+                  ? (round.games || []).filter((g) => g.templateId !== "skins-daily")
+                  : [...(round.games || []), { id: uid(), templateId: "skins-daily", name: "Skins (Daily)", emoji: "💰", description: "Win skins by having the best score on each hole", carryOverUnawarded: true }];
+                updateRound("games", newGames);
+              }}
+              className="flex items-center gap-2 w-full"
+            >
+              <span className="text-lg">💰</span>
+              <span className="flex-1 text-left">
+                <span className="text-sm font-medium block" style={{ color: COLORS.charcoal }}>Skins (Daily)</span>
+                <span className="text-[11px] opacity-60 block">Best score on each hole. Ties carry over to next hole</span>
+              </span>
+              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: round.games?.some((g) => g.templateId === "skins-daily") ? COLORS.green : "white", border: `1px solid ${COLORS.line}` }}>
+                {round.games?.some((g) => g.templateId === "skins-daily") && <Check size={14} color="white" />}
+              </div>
+            </button>
+            {round.games?.some((g) => g.templateId === "skins-daily") && (
+              <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: COLORS.greenPale, border: `1px solid ${COLORS.green}` }}>
+                <label className="flex items-center gap-2 text-sm" style={{ color: COLORS.charcoal }}>
+                  <input
+                    type="checkbox"
+                    checked={round.games?.find((g) => g.templateId === "skins-daily")?.carryOverUnawarded !== false}
+                    onChange={(e) => {
+                      const skinsGame = round.games?.find((g) => g.templateId === "skins-daily");
+                      if (skinsGame) {
+                        const updatedGame = { ...skinsGame, carryOverUnawarded: e.target.checked };
+                        const newGames = round.games?.map((g) => g.templateId === "skins-daily" ? updatedGame : g);
+                        updateRound("games", newGames);
+                      }
+                    }}
+                    style={{ accentColor: COLORS.green }}
+                  />
+                  <span><strong>{roundTab < rounds.length - 1 ? "Carry unawarded skins to next day" : "N/A (last day)"}</strong></span>
+                </label>
+                {roundTab === rounds.length - 1 && (
+                  <p className="text-xs mt-2 opacity-70" style={{ color: COLORS.charcoal }}>
+                    This is the final day, so unawarded skins cannot carry over
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -2249,10 +2539,15 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
             hardestSixTotal += computePlayerHardestSixScore(rnd, p, allowance, so);
           });
           let finalScore = total;
+          let skinsData = null;
           if (competition === "stableford") finalScore = total;
           else if (competition === "hardest-six") finalScore = hardestSixTotal;
           else if (competition === "best-indexed") finalScore = computePlayerBestIndexedScore(config.rounds, p, allowance, allScoresByRound, currentRoundId, currentScores);
-          return { id: p.id, name: p.name, groupName: "All rounds", pts: finalScore, thru };
+          else if (competition === "skins") {
+            skinsData = computePlayerSkinsScore(config.rounds, p, allowance, allScoresByRound, currentRoundId, currentScores, config.players, true);
+            finalScore = skinsData.totalWon;
+          }
+          return { id: p.id, name: p.name, groupName: "All rounds", pts: finalScore, thru, skinsData };
         }
         const r = config.rounds.find((rr) => rr.id === view);
         // Guard: if round doesn't exist, return placeholder
@@ -2278,11 +2573,16 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
         const stats = computePlayerRoundStats(r, p, allowance, so);
         const hardestSixScore = computePlayerHardestSixScore(r, p, allowance, so);
         let finalScore = stats.dayTotal;
+        let skinsData = null;
         if (competition === "stableford") finalScore = stats.dayTotal;
         else if (competition === "hardest-six") finalScore = hardestSixScore;
         else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, { [r.id]: { [group.id]: so } }, r.id, so) : 0;
         else if (competition === "best-ball-teams") finalScore = stats.dayTotal; // Teams handled separately above
-        return { id: p.id, name: p.name, groupName: group?.name || "–", pts: finalScore, gross: stats.gross, thru: stats.thru, jokerBonus: stats.jokerBonus, jokerHole: stats.jokerHole };
+        else if (competition === "skins") {
+          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: { [group.id]: so } }, r.id, so, config.players, true);
+          finalScore = skinsData.totalWon;
+        }
+        return { id: p.id, name: p.name, groupName: group?.name || "–", pts: finalScore, gross: stats.gross, thru: stats.thru, jokerBonus: stats.jokerBonus, jokerHole: stats.jokerHole, skinsData };
       })
       .sort((a, b) => b.pts - a.pts);
   })();
@@ -2329,7 +2629,13 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
                 </div>
               </div>
               <div className="text-right">
-                <span className="font-display text-lg" style={{ color: COLORS.gold }}>{r.pts}</span>
+                {competition === "skins" && r.skinsData ? (
+                  <span className="font-display text-lg" style={{ color: COLORS.gold }}>
+                    {r.skinsData.totalWon}({r.skinsData.timesAwarded})
+                  </span>
+                ) : (
+                  <span className="font-display text-lg" style={{ color: COLORS.gold }}>{r.pts}</span>
+                )}
                 {r.jokerBonus > 0 && competition === "stableford" && (
                   <p className="text-[10px]" style={{ color: COLORS.goldPale }}>
                     [+{r.jokerBonus}]
