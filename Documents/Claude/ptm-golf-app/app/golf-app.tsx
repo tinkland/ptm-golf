@@ -1870,10 +1870,15 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
 
   if (!group) return <p className="p-6 text-sm opacity-60">No group selected.</p>;
 
+  // Scroll to top when hole changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [hole]);
+
   return (
     <div className="px-4 py-4 pb-24">
       <div className="rounded-2xl p-4 mb-4 flex items-center justify-between" style={{ backgroundColor: COLORS.green }}>
-        <button onClick={() => { setHole((h) => Math.max(1, h - 1)); window.scrollTo(0, 0); }} aria-label="Previous hole">
+        <button onClick={() => setHole((h) => Math.max(1, h - 1))} aria-label="Previous hole">
           <ChevronLeft size={22} color={COLORS.goldPale} />
         </button>
         <div className="text-center flex-1">
@@ -1883,7 +1888,7 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
             Par {holeData.par} · SI {holeData.si}
           </p>
         </div>
-        <button onClick={() => { setHole((h) => Math.min(TOTAL_HOLES, h + 1)); window.scrollTo(0, 0); }} aria-label="Next hole">
+        <button onClick={() => setHole((h) => Math.min(TOTAL_HOLES, h + 1))} aria-label="Next hole">
           <ChevronRight size={22} color={COLORS.goldPale} />
         </button>
       </div>
@@ -3366,9 +3371,11 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
             {activeRound?.label || ""}
           </p>
         </div>
-        <button onClick={() => setScreen("setup")} aria-label="Settings">
-          <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
-        </button>
+        {isAdmin && (
+          <button onClick={() => setScreen("setup")} aria-label="Settings">
+            <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
+          </button>
+        )}
       </div>
 
       {needsPick ? (
