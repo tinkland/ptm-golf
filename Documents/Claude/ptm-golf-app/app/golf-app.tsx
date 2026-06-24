@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, Plus, Minus, X, Target, RefreshCw, Pencil, Check, Swords, LogOut, BarChart3 } from "lucide-react";
+import QRCode from "qrcode.react";
 import { useAuth } from "./auth-provider";
 import { db } from "@/lib/firebase";
 import { collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, Unsubscribe } from "firebase/firestore";
@@ -3204,6 +3205,33 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
             >
               📋 Copy Event Link
             </button>
+
+            {/* QR Code */}
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: COLORS.line }}>
+              <p className="text-xs opacity-60 mb-3" style={{ color: COLORS.charcoal }}>Or scan QR code:</p>
+              <div className="flex justify-center mb-3">
+                <div style={{ padding: "8px", backgroundColor: "white", borderRadius: "8px" }}>
+                  <QRCode value={eventLink} size={180} level="H" includeMargin={true} />
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const qrCanvas = document.querySelector("canvas");
+                  if (qrCanvas) {
+                    const image = qrCanvas.toDataURL("image/png");
+                    const link = document.createElement("a");
+                    link.href = image;
+                    link.download = `ptm-golf-event-${eventId}-qr.png`;
+                    link.click();
+                    celebrate("⬇️ QR code downloaded!");
+                  }
+                }}
+                className="w-full py-2 rounded-lg font-medium text-xs"
+                style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
+              >
+                ⬇️ Download QR Code
+              </button>
+            </div>
           </div>
 
           <p className="text-xs mb-4" style={{ color: COLORS.charcoal }}>
