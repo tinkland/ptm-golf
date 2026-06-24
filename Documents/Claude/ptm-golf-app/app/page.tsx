@@ -197,10 +197,14 @@ export default function Home() {
 
   // Save eventId from URL to localStorage immediately (before auth check)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const eventId = params.get("eventId");
-    if (eventId) {
-      localStorage.setItem("ptm-golf-eventId", eventId);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get("eventId");
+      console.log("EventId from URL:", eventId); // DEBUG
+      if (eventId) {
+        localStorage.setItem("ptm-golf-eventId", eventId);
+        console.log("Saved eventId to localStorage:", eventId); // DEBUG
+      }
     }
   }, []);
 
