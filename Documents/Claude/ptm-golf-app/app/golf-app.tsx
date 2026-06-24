@@ -2797,18 +2797,14 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     }
   };
 
-  const handleReset = () => {
-    // Clear current event but keep user logged in
-    setEventId(null);
-    setConfig(null);
-    setActiveRoundId(null);
-    setGroupSelections({});
-    setScores({ playerScores: {}, jokerHoles: {} });
-    setGameEntries([]);
-    setTab("score");
-    setScreen("setup");
-    setFinishingRound(false);
-    celebrate("📋 Ready to create a new event!");
+  const handleReset = async () => {
+    // Clear event and logout
+    try {
+      localStorage.removeItem("ptm-golf-eventId");
+      await logout();
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
   };
 
   const fontStyle = (
