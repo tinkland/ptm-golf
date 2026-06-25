@@ -1,6 +1,6 @@
 {
-  "name": "PTM Golf - Real-time Scoring",
-  "short_name": "PTM Golf",
+  "name": "OurGolf - Real-time Scoring",
+  "short_name": "OurGolf",
   "description": "Real-time golf scoring app with live leaderboards and multi-device sync",
   "start_url": "/",
   "scope": "/",

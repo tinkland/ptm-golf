@@ -11,7 +11,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "PTM Golf - Scoring App",
+  title: "OurGolf - Scoring App",
   description: "Real-time golf scoring with live leaderboards and multi-device sync",
   icons: {
     icon: "/favicon.svg",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "PTM Golf",
+    title: "OurGolf",
   },
   formatDetection: {
     telephone: false,
@@ -39,7 +39,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="PTM Golf" />
+        <meta name="apple-mobile-web-app-title" content="OurGolf" />
       </head>
       <body className={inter.className}>
         <AuthProvider>{children}</AuthProvider>

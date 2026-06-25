@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ptm-golf-v1';
+const CACHE_NAME = 'ourgolf-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/favicon.svg',
