@@ -1662,8 +1662,9 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
     })
     .sort((a, b) => b.raw - a.raw);
 
-  // Get on-course games
-  const onCourseGames = dayOneRound.games?.filter((g) => ["long-drive", "ctp", "long-putt"].includes(g.templateId)) || [];
+  // Get on-course games - any game with holes configured
+  const dailyGameIds = ["sandy-saver", "snake", "joker"];
+  const onCourseGames = dayOneRound.games?.filter((g) => !dailyGameIds.includes(g.templateId) && g.holes && Array.isArray(g.holes) && g.holes.length > 0) || [];
 
 
   const handleComplete = () => {
@@ -1829,21 +1830,91 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
             {onCourseGames.map((game) => (
               <div key={game.id}>
                 <label className="text-sm font-medium block mb-2">{game.emoji} {game.name}</label>
-                <select
-                  value={gameWinners[`oncourse-${game.templateId}`] || ""}
-                  onChange={(e) => setGameWinners({ ...gameWinners, [`oncourse-${game.templateId}`]: e.target.value })}
-                  className="w-full text-sm rounded px-3 py-2"
-                  style={{ border: `1px solid ${COLORS.line}` }}
-                >
-                  <option value="">Select winner...</option>
-                  {leaderboard.map((entry) => (
-                    <option key={entry.player.id} value={entry.player.id}>
-                      {entry.player.name}
-                    </option>
-                  ))}
-                </select>
+                {game.holes && game.holes.length > 1 ? (
+                  <div className="space-y-2 pl-2">
+                    {game.holes.map((holeNum) => (
+                      <div key={holeNum} className="flex items-center gap-2">
+                        <span className="text-sm w-16 shrink-0" style={{ color: COLORS.charcoal }}>Hole {holeNum}:</span>
+                        <select
+                          value={gameWinners[`oncourse-${game.templateId}-hole-${holeNum}`] || ""}
+                          onChange={(e) => setGameWinners({ ...gameWinners, [`oncourse-${game.templateId}-hole-${holeNum}`]: e.target.value })}
+                          className="flex-1 text-sm rounded px-3 py-2"
+                          style={{ border: `1px solid ${COLORS.line}` }}
+                        >
+                          <option value="">Select winner...</option>
+                          {leaderboard.map((entry) => (
+                            <option key={entry.player.id} value={entry.player.id}>{entry.player.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <select
+                    value={gameWinners[`oncourse-${game.templateId}`] || ""}
+                    onChange={(e) => setGameWinners({ ...gameWinners, [`oncourse-${game.templateId}`]: e.target.value })}
+                    className="w-full text-sm rounded px-3 py-2"
+                    style={{ border: `1px solid ${COLORS.line}` }}
+                  >
+                    <option value="">Select winner...</option>
+                    {leaderboard.map((entry) => (
+                      <option key={entry.player.id} value={entry.player.id}>{entry.player.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Best Ball Teams Day 1 Results - shown before Day 2 groups */}
+      {teams && teams.length > 0 && (
+        <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
+          <div className="bg-white p-4" style={{ backgroundColor: COLORS.greenPale }}>
+            <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams - Day 1 Results</h3>
+          </div>
+          <div className="bg-white p-4">
+            {(() => {
+              const teamScores = teams.map((team) => {
+                let teamScore = 0;
+                dayOneRound.course?.holes?.forEach((hole) => {
+                  let bestHoleScore = null;
+                  team.players.forEach((playerId) => {
+                    const group = getPlayerGroup(dayOneRound, playerId);
+                    let so = null;
+                    if (group && allScores && allScores[group.id]) {
+                      so = allScores[group.id];
+                    }
+                    const player = config.players.find(p => p.id === playerId);
+                    if (so && player) {
+                      const g = so.playerScores?.[playerId]?.[hole.number];
+                      if (g !== "" && g != null) {
+                        const ph = getPH(dayOneRound.course, player, allowance);
+                        const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+                        if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
+                          bestHoleScore = pts;
+                        }
+                      }
+                    }
+                  });
+                  if (bestHoleScore !== null) teamScore += bestHoleScore;
+                });
+                return { team, teamScore };
+              }).sort((a, b) => b.teamScore - a.teamScore);
+
+              return teamScores.map(({ team, teamScore }, idx) => (
+                <div key={idx} className="p-2 rounded mb-2" style={{ backgroundColor: COLORS.cream }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{idx + 1}. {team.name || `Team ${idx + 1}`}</span>
+                    <span style={{ color: COLORS.green, fontWeight: "500" }}>{teamScore} pts</span>
+                  </div>
+                  <div className="text-xs opacity-60 mt-1">
+                    {team.players.map(pid => config.players.find(p => p.id === pid)?.name).join(", ")}
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -1871,59 +1942,6 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
               </div>
             ));
           })()}
-        </div>
-      </div>
-
-      {/* Best Ball Teams Day 1 Results */}
-      <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
-        <div className="bg-white p-4" style={{ backgroundColor: COLORS.greenPale }}>
-          <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams - Day 1 Results</h3>
-        </div>
-        <div className="bg-white p-4">
-          {teams && teams.length > 0 ? (
-            teams.map((team, idx) => {
-              let teamScore = 0;
-              let thru = 0;
-              dayOneRound.course.holes.forEach((hole) => {
-                let bestHoleScore = null;
-                team.players.forEach((playerId) => {
-                  const group = getPlayerGroup(dayOneRound, playerId);
-                  let so = null;
-                  if (group && allScores && allScores[group.id]) {
-                    so = allScores[group.id];
-                  }
-                  const player = config.players.find(p => p.id === playerId);
-                  if (so && player) {
-                    const g = so.playerScores?.[playerId]?.[hole.number];
-                    if (g !== "" && g != null) {
-                      const ph = getPH(dayOneRound.course, player, allowance);
-                      const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
-                      if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
-                        bestHoleScore = pts;
-                      }
-                    }
-                  }
-                });
-                if (bestHoleScore !== null) {
-                  teamScore += bestHoleScore;
-                  thru++;
-                }
-              });
-              return (
-                <div key={idx} className="p-2 rounded mb-2" style={{ backgroundColor: COLORS.cream }}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{team.name || `Team ${idx + 1}`}</span>
-                    <span style={{ color: COLORS.green, fontWeight: "500" }}>{teamScore} pts</span>
-                  </div>
-                  <div className="text-xs opacity-60 mt-1">
-                    Players: {team.players.map(pid => config.players.find(p => p.id === pid)?.name).join(", ")}
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-sm text-center opacity-60 py-2">No teams generated - create them during Setup</p>
-          )}
         </div>
       </div>
 
