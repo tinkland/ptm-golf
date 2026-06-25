@@ -808,7 +808,7 @@ function NumField({ value, onChange, w = "w-14", min, max, step = 1 }: { value: 
 }
 
 // SetupForm Component
-function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDone }) {
+function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDone, currentRoundId = null }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [eventName, setEventName] = useState(initialConfig?.eventName || "");
@@ -849,7 +849,12 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const round = rounds[roundTab];
   const totalPar = totalParOf(round.course);
 
+  // Determine if current round tab is editable (future rounds only)
+  const currentRoundIndex = currentRoundId ? rounds.findIndex((r) => r.id === currentRoundId) : -1;
+  const isEditableRound = currentRoundIndex === -1 || roundTab > currentRoundIndex; // Allow editing if no current round or this is a future round
+
   function updateRound(field, val) {
+    if (!isEditableRound) return; // Don't allow edits to past/current rounds
     setRounds((rs) => rs.map((r, i) => (i === roundTab ? { ...r, [field]: val } : r)));
   }
   function updateCourse(field, val) {
@@ -942,6 +947,26 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         return { ...r, games: newGames };
       })
     );
+    // Auto-save whenever holes are updated
+    setTimeout(() => {
+      const updatedRounds = rounds.map((r, i) => {
+        if (i !== roundTab) return r;
+        return {
+          ...r,
+          games: (r.games || []).map((g) =>
+            g.templateId === templateId ? { ...g, holes } : g
+          ),
+        };
+      });
+      const config = {
+        eventName,
+        rounds: updatedRounds,
+        players,
+        matches,
+        allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
+      };
+      onSave?.(config);
+    }, 500);
   }
 
   function exportConfig() {
