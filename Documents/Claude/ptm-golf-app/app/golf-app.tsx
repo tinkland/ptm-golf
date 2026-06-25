@@ -3493,11 +3493,16 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
             {activeRound?.label || ""}
           </p>
         </div>
-        {isAdmin && (
-          <button onClick={() => setScreen("setup")} aria-label="Settings">
-            <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
+        <div className="flex gap-2">
+          {isAdmin && (
+            <button onClick={() => setScreen("setup")} aria-label="Settings">
+              <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
+            </button>
+          )}
+          <button onClick={handleReset} aria-label="Sign out">
+            <LogOut size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
           </button>
-        )}
+        </div>
       </div>
 
       {needsPick ? (
