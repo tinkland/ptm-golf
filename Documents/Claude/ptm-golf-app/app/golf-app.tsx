@@ -3264,8 +3264,19 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
             const evt = JSON.parse(localEvent);
             setConfig(evt);
             setEventId(urlEventId);
-            setActiveRoundId(evt.rounds[0]?.id);
+            setActiveRoundId(evt.currentRoundId || evt.rounds[0]?.id);
             setScreen("join");
+            // Always also check Firebase for latest round advancement (don't return early)
+            try {
+              const firebaseEvt = await getEventFromFirebase(urlEventId);
+              if (firebaseEvt) {
+                setConfig(firebaseEvt);
+                setActiveRoundId(firebaseEvt.currentRoundId || firebaseEvt.rounds[0]?.id);
+                localStorage.setItem(`event-${urlEventId}`, JSON.stringify(firebaseEvt));
+              }
+            } catch (e) {
+              // Firebase unavailable - localStorage version is fine
+            }
             return;
           }
         } catch (err) {
@@ -3278,7 +3289,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
           if (evt) {
             setConfig(evt);
             setEventId(urlEventId);
-            setActiveRoundId(evt.rounds[0]?.id);
+            setActiveRoundId(evt.currentRoundId || evt.rounds[0]?.id);
+            localStorage.setItem(`event-${urlEventId}`, JSON.stringify(evt));
             setScreen("join");
             return;
           }
@@ -3423,6 +3435,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
 
     const updatedConfig = {
       ...config,
+      currentRoundId: nextRound.id,
       rounds: config.rounds.map((r) => (r.id === nextRound.id ? updatedNextRound : r)),
     };
 
