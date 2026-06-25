@@ -111,7 +111,7 @@ export default function AuthUI() {
         {/* Info */}
         <div className="mt-8 p-4 bg-white rounded-lg border border-gray-200">
           <p className="text-xs text-gray-600">
-            💡 <strong>Demo:</strong> Sign up with any email. Scores save to the cloud and sync across all your devices.
+            💡 Sign up with any email. Scores save to the cloud and sync across all your devices.
           </p>
         </div>
       </div>
