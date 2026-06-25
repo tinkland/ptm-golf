@@ -2817,7 +2817,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
         else if (competition === "skins") {
           // For skins, need ALL scores from this round (all groups), not just current group
           const roundAllScores = allScoresByRound[r.id] || {};
-          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: roundAllScores }, r.id, currentScores, config.players, true);
+          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: roundAllScores }, currentRoundId, currentScores, config.players, true);
           finalScore = skinsData.totalWon;
         }
         return { id: p.id, name: p.name, groupName: group?.name || "–", pts: finalScore, gross: stats.gross, thru: stats.thru, jokerBonus: stats.jokerBonus, jokerHole: stats.jokerHole, skinsData };
