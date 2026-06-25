@@ -3023,6 +3023,22 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
   const [showEndOfDay, setShowEndOfDay] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
+  const [effectiveIsAdmin, setEffectiveIsAdmin] = useState(isAdmin || false);
+
+  // Check if user is the event admin based on stored adminUserId
+  useEffect(() => {
+    if (config?.adminUserId && userId !== "admin") {
+      // If the config has an adminUserId and it matches current userId, user is admin
+      if (config.adminUserId === userId) {
+        setEffectiveIsAdmin(true);
+      } else {
+        setEffectiveIsAdmin(false);
+      }
+    } else {
+      // Otherwise use the passed isAdmin prop
+      setEffectiveIsAdmin(isAdmin || false);
+    }
+  }, [config, userId, isAdmin]);
 
   const celebrate = (msg: string) => {
     setToast(msg);
@@ -3169,7 +3185,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
 
       // Show end-of-day processing screen (admin only) or completion screen (scorers)
       setFinishingRound(false);
-      if (isAdmin) {
+      if (effectiveIsAdmin) {
         setShowEndOfDay(true);
       } else {
         // Non-admin scorers see a completion screen and wait
@@ -3311,7 +3327,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     );
   }
 
-  if (screen === "event-created" && config && isAdmin) {
+  if (screen === "event-created" && config && effectiveIsAdmin) {
     const eventLink = `${typeof window !== "undefined" ? window.location.origin : ""}?eventId=${eventId}`;
     return (
       <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col items-center justify-center max-w-md mx-auto px-4">
@@ -3391,7 +3407,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
   }
 
   // End of Day Processing (admin only)
-  if (showEndOfDay && config && isAdmin) {
+  if (showEndOfDay && config && effectiveIsAdmin) {
     const currentRound = config.rounds.find((r) => r.id === activeRoundId);
     const nextRound = config.rounds[config.rounds.findIndex((r) => r.id === activeRoundId) + 1];
     return (
@@ -3409,7 +3425,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
 
   if (screen === "setup") {
     // Regular users can't access setup (event creation)
-    if (!isAdmin) {
+    if (!effectiveIsAdmin) {
       return (
         <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col items-center justify-center max-w-md mx-auto px-4">
           <p className="text-center mb-6" style={{ color: COLORS.charcoal }}>
@@ -3429,9 +3445,9 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     return (
       <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
         {fontStyle}
-        <SetupForm initialConfig={null} onSave={handleSetupSave} isAdmin={isAdmin} onAdminDone={onAdminDone} />
+        <SetupForm initialConfig={null} onSave={handleSetupSave} isAdmin={effectiveIsAdmin} onAdminDone={onAdminDone} />
         <div className="max-w-md mx-auto px-4 pb-4 flex gap-2">
-          {isAdmin && onAdminDone && (
+          {effectiveIsAdmin && onAdminDone && (
             <button
               onClick={onAdminDone}
               className="flex-1 py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2 font-medium"
@@ -3499,7 +3515,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
           </p>
         </div>
         <div className="flex gap-2">
-          {isAdmin && (
+          {effectiveIsAdmin && (
             <button onClick={() => setScreen("setup")} aria-label="Settings">
               <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
             </button>
