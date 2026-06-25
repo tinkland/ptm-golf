@@ -1590,6 +1590,7 @@ function JoinScreen({ config, round, onJoin, onEdit, onReset }) {
 // End of Day Processing Screen
 function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, currentScores, gameEntriesData, onComplete }) {
   const [gameWinners, setGameWinners] = useState({});
+  const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({}); // Track manual group changes
   const allowance = config.allowance.stableford;
   const gameEntries = gameEntriesData || [];
   const teams = dayOneRound.bestBallTeams || []; // Use teams from Day 1
@@ -1617,7 +1618,25 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
 
   const handleComplete = () => {
     // Reorganize Day 2 groups by score
-    const newDay2Round = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
+    let newDay2Round = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
+
+    // Apply manual group assignments if any
+    if (Object.keys(manualGroupAssignments).length > 0) {
+      const updatedGroups = newDay2Round.groups.map((group) => ({
+        ...group,
+        playerIds: group.playerIds.filter((pid) => !manualGroupAssignments[pid]),
+      }));
+
+      // Add manually assigned players to their new groups
+      Object.entries(manualGroupAssignments).forEach(([playerId, groupId]: [string, any]) => {
+        const targetGroup = updatedGroups.find((g) => g.id === groupId);
+        if (targetGroup && !targetGroup.playerIds.includes(playerId)) {
+          targetGroup.playerIds.push(playerId);
+        }
+      });
+
+      newDay2Round = { ...newDay2Round, groups: updatedGroups };
+    }
 
     // Save game winners and teams
     const eventData = {
@@ -1809,6 +1828,46 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
           ) : (
             <p className="text-sm text-center opacity-60 py-2">No teams generated - create them during Setup</p>
           )}
+        </div>
+      </div>
+
+      {/* Day 2 Group Assignments */}
+      <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
+        <div className="bg-white p-4" style={{ backgroundColor: COLORS.goldPale }}>
+          <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 Day 2 Group Assignments (Optional)</h3>
+          <p className="text-xs opacity-60 mt-1">Reassign players if needed - auto-sorted by score otherwise</p>
+        </div>
+        <div className="bg-white p-4 space-y-3">
+          {config.players.map((player) => {
+            // Find which group this player is in (from auto-sort or manual assignment)
+            const autoSortedRound = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
+            const playerGroup = manualGroupAssignments[player.id] || autoSortedRound.groups.find((g) => g.playerIds.includes(player.id));
+
+            return (
+              <div key={player.id} className="flex items-center gap-2">
+                <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>
+                  {player.name}
+                </span>
+                <select
+                  value={playerGroup?.id || ""}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setManualGroupAssignments({ ...manualGroupAssignments, [player.id]: e.target.value });
+                    }
+                  }}
+                  className="px-2 py-1 rounded text-sm border"
+                  style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
+                >
+                  <option value="">Select group...</option>
+                  {dayTwoRound.groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
         </div>
       </div>
 
