@@ -3445,7 +3445,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     return (
       <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
         {fontStyle}
-        <SetupForm initialConfig={null} onSave={handleSetupSave} isAdmin={effectiveIsAdmin} onAdminDone={onAdminDone} />
+        <SetupForm initialConfig={config} onSave={handleSetupSave} isAdmin={effectiveIsAdmin} onAdminDone={onAdminDone} />
         <div className="max-w-md mx-auto px-4 pb-4 flex gap-2">
           {effectiveIsAdmin && onAdminDone && (
             <button
