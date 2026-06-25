@@ -92,7 +92,7 @@ function getPlayerGroup(round, playerId) {
 }
 
 function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allowance) {
-  // Get all players with their Day 1 scores, sorted by score (lowest/best first)
+  // Get all players with their Day 1 scores, sorted by score (worst first, so best players end up in last group)
   const playerScores = players
     .map((p) => {
       const group = getPlayerGroup(prevRound, p.id);
@@ -100,7 +100,7 @@ function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allow
       const stats = computePlayerRoundStats(prevRound, p, allowance, scoreObj);
       return { player: p, score: stats.raw, gross: stats.gross };
     })
-    .sort((a, b) => b.score - a.score); // Sort descending (best scores first)
+    .sort((a, b) => a.score - b.score); // Sort ascending (worst scores first, leaders last)
 
   // Create new groups of 4 (or existing group size)
   const groupSize = prevRound.groups[0]?.playerIds.length || 4;
@@ -1594,7 +1594,7 @@ function JoinScreen({ config, round, onJoin, onEdit, onReset }) {
 }
 
 // End of Day Processing Screen
-function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, currentScores, gameEntriesData, onComplete }) {
+function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, currentScores, gameEntriesData, onComplete, onBack }) {
   const [gameWinners, setGameWinners] = useState({});
   const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({}); // Track manual group changes
   const allowance = config.allowance.stableford;
@@ -1659,7 +1659,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Day 1 Summary & Day 2 Setup</h2>
         <button
-          onClick={() => window.history.back()}
+          onClick={onBack || (() => window.history.back())}
           className="p-2 rounded-lg hover:bg-gray-100"
           title="Return to board"
         >
@@ -3524,6 +3524,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
         currentScores={scores}
         gameEntriesData={gameEntries}
         onComplete={handleEndOfDayComplete}
+        onBack={() => setShowEndOfDay(false)}
       />
     );
   }
