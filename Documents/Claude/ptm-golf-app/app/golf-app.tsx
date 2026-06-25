@@ -2316,11 +2316,12 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
   );
 }
 
-// End of Round Games Screen (for Long Drive, CTP, Longest Putt)
+// End of Round Games Screen (for any games with hole selection)
 function EndOfRoundGamesScreen({ config, round, groupId, gameEntries, onEntriesChange, onFinish }) {
   const group = round.groups.find((g) => g.id === groupId);
   const groupPlayers = group ? config.players.filter((p) => group.playerIds.includes(p.id)) : [];
-  const endOfRoundGames = round.games?.filter((g) => ["long-drive", "ctp", "long-putt"].includes(g.templateId)) || [];
+  // Show all games that support hole selection (any game with a holes array)
+  const endOfRoundGames = round.games?.filter((g) => g.holes && Array.isArray(g.holes)) || [];
 
   if (!group) return null;
 
