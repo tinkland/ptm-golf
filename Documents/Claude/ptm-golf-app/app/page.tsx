@@ -307,16 +307,14 @@ export default function Home() {
   }
 
   // Check if user has an event to join (eventId in URL or saved in localStorage) - CHECK FIRST
-  const params = new URLSearchParams(window.location.search);
-  let eventId = params.get("eventId");
+  let eventId = urlEventId || localEventId;
 
-  // If eventId in URL, save it; if not in URL but saved in localStorage, use that
-  if (eventId) {
-    localStorage.setItem("ptm-golf-eventId", eventId);
-    console.log("EventId from URL:", eventId); // DEBUG
-  } else if (!eventId && typeof window !== "undefined") {
-    eventId = localStorage.getItem("ptm-golf-eventId");
-    console.log("EventId from localStorage:", eventId); // DEBUG
+  // If eventId in URL, save it to localStorage
+  if (urlEventId) {
+    localStorage.setItem("ptm-golf-eventId", urlEventId);
+    console.log("EventId from URL:", urlEventId); // DEBUG
+  } else if (localEventId) {
+    console.log("EventId from localStorage:", localEventId); // DEBUG
   }
 
   // Check if this user is the admin of the event (by matching userId)
