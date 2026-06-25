@@ -213,18 +213,23 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
 
       let scoreObj = null;
 
+      // For all rounds, merge all groups from allScoresByRound
+      if (allScoresByRound[round.id]) {
+        const merged = { playerScores: {}, jokerHoles: {} };
+        Object.values(allScoresByRound[round.id]).forEach((groupScores: any) => {
+          if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
+          if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
+        });
+        scoreObj = merged;
+      }
+
+      // For the current round, overlay currentScores (most recent, not yet synced to Firebase)
       if (round.id === currentRoundId) {
-        // Use current scores for active round
-        scoreObj = currentScores;
-      } else {
-        // For past rounds, merge all groups (groups may have been reorganized)
-        if (allScoresByRound[round.id]) {
-          const merged = { playerScores: {}, jokerHoles: {} };
-          Object.values(allScoresByRound[round.id]).forEach((groupScores: any) => {
-            if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
-            if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
-          });
-          scoreObj = merged;
+        if (scoreObj) {
+          if (currentScores?.playerScores) Object.assign((scoreObj as any).playerScores, currentScores.playerScores);
+          if (currentScores?.jokerHoles) Object.assign((scoreObj as any).jokerHoles, currentScores.jokerHoles);
+        } else {
+          scoreObj = currentScores;
         }
       }
 
@@ -338,9 +343,23 @@ function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRoun
       }
     }
 
-    // For current round, use currentScores
+    // For current round, merge all groups then overlay currentScores
     if (round.id === currentRoundId) {
-      roundScores = currentScores;
+      if (round.groups && round.groups.length > 0 && allScoresByRound[round.id]) {
+        const merged = { playerScores: {}, jokerHoles: {} };
+        for (const group of round.groups) {
+          if (allScoresByRound[round.id][group.id]) {
+            const groupScores = allScoresByRound[round.id][group.id];
+            if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
+            if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
+          }
+        }
+        if (currentScores?.playerScores) Object.assign(merged.playerScores, currentScores.playerScores);
+        if (currentScores?.jokerHoles) Object.assign(merged.jokerHoles, currentScores.jokerHoles);
+        roundScores = merged;
+      } else {
+        roundScores = currentScores;
+      }
       foundScores = true;
     }
 
@@ -440,7 +459,22 @@ function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound,
     }
 
     if (round.id === currentRoundId) {
-      roundScores = currentScores;
+      // Merge all groups from allScoresByRound then overlay currentScores (most recent for this device)
+      if (round.groups && round.groups.length > 0 && allScoresByRound[round.id]) {
+        const merged = { playerScores: {}, jokerHoles: {} };
+        for (const group of round.groups) {
+          if (allScoresByRound[round.id][group.id]) {
+            const groupScores = allScoresByRound[round.id][group.id];
+            if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
+            if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
+          }
+        }
+        if (currentScores?.playerScores) Object.assign(merged.playerScores, currentScores.playerScores);
+        if (currentScores?.jokerHoles) Object.assign(merged.jokerHoles, currentScores.jokerHoles);
+        roundScores = merged;
+      } else {
+        roundScores = currentScores;
+      }
       foundScores = true;
     }
 
@@ -2778,7 +2812,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
         let skinsData = null;
         if (competition === "stableford") finalScore = stats.dayTotal;
         else if (competition === "hardest-six") finalScore = hardestSixScore;
-        else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, { [r.id]: { [group.id]: so } }, r.id, so) : 0;
+        else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, group ? { [r.id]: { [group.id]: so } } : {}, r.id, so) : 0;
         else if (competition === "best-ball-teams") finalScore = stats.dayTotal; // Teams handled separately above
         else if (competition === "skins") {
           // For skins, need ALL scores from this round (all groups), not just current group
