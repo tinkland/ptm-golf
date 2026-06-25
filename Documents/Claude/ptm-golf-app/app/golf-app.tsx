@@ -3327,6 +3327,18 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     });
 
     setConfig(updatedConfig);
+
+    // Persist updated config to localStorage (includes new Day 2 groups)
+    if (eventId) {
+      try {
+        localStorage.setItem(`event-${eventId}`, JSON.stringify(updatedConfig));
+      } catch (e) {
+        console.warn("Failed to save config to localStorage:", e);
+      }
+      // Also save to Firebase
+      saveEventToFirebase(eventId, userId, updatedConfig).catch(e => console.warn("Firebase save failed:", e));
+    }
+
     setActiveRoundId(nextRound.id);
     setGroupSelections((cur) => ({ ...cur, [nextRound.id]: null }));
     setScores({ playerScores: {}, jokerHoles: {} });
