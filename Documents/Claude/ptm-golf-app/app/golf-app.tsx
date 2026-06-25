@@ -206,6 +206,11 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
 
     // Check all rounds for holes with this stroke index
     rounds.forEach((round) => {
+      // Guard: ensure round has course data
+      if (!round || !round.course || !round.course.holes) {
+        return;
+      }
+
       let scoreObj = null;
 
       if (round.id === currentRoundId) {
@@ -1830,16 +1835,53 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
         </div>
       </div>
 
-      {/* Best Ball Teams - Same for both days */}
-      <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
-        <h3 className="font-medium mb-3" style={{ color: COLORS.green }}>🤝 Best Ball Teams (Same for Both Days)</h3>
-        <div className="space-y-2">
+      {/* Best Ball Teams Day 1 Results */}
+      <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
+        <div className="bg-white p-4" style={{ backgroundColor: COLORS.greenPale }}>
+          <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams - Day 1 Results</h3>
+        </div>
+        <div className="bg-white p-4">
           {teams && teams.length > 0 ? (
-            teams.map((team, idx) => (
-              <div key={idx} className="p-2 rounded text-sm" style={{ backgroundColor: COLORS.cream }}>
-                <span className="font-medium">Team {idx + 1}:</span> {team.name || "No name"}
-              </div>
-            ))
+            teams.map((team, idx) => {
+              let teamScore = 0;
+              let thru = 0;
+              dayOneRound.course.holes.forEach((hole) => {
+                let bestHoleScore = null;
+                team.players.forEach((playerId) => {
+                  const group = getPlayerGroup(dayOneRound, playerId);
+                  let so = null;
+                  if (group && allScores && allScores[group.id]) {
+                    so = allScores[group.id];
+                  }
+                  const player = config.players.find(p => p.id === playerId);
+                  if (so && player) {
+                    const g = so.playerScores?.[playerId]?.[hole.number];
+                    if (g !== "" && g != null) {
+                      const ph = getPH(dayOneRound.course, player, allowance);
+                      const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+                      if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
+                        bestHoleScore = pts;
+                      }
+                    }
+                  }
+                });
+                if (bestHoleScore !== null) {
+                  teamScore += bestHoleScore;
+                  thru++;
+                }
+              });
+              return (
+                <div key={idx} className="p-2 rounded mb-2" style={{ backgroundColor: COLORS.cream }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{team.name || `Team ${idx + 1}`}</span>
+                    <span style={{ color: COLORS.green, fontWeight: "500" }}>{teamScore} pts</span>
+                  </div>
+                  <div className="text-xs opacity-60 mt-1">
+                    Players: {team.players.map(pid => config.players.find(p => p.id === pid)?.name).join(", ")}
+                  </div>
+                </div>
+              );
+            })
           ) : (
             <p className="text-sm text-center opacity-60 py-2">No teams generated - create them during Setup</p>
           )}
@@ -2321,6 +2363,22 @@ function EndOfRoundGamesScreen({ config, round, groupId, gameEntries, onEntriesC
                           </div>
                         ) : (
                           <div className="flex flex-col gap-1">
+                            <button
+                              onClick={() => {
+                                const updated = gameEntries.filter(
+                                  (e) => !(e.gameId === game.id && e.hole === hole.number)
+                                );
+                                onEntriesChange(updated);
+                              }}
+                              className="p-2 rounded text-sm font-medium text-left"
+                              style={{
+                                backgroundColor: COLORS.cream,
+                                color: COLORS.charcoal,
+                                border: `1px solid ${COLORS.line}`,
+                              }}
+                            >
+                              — No Winner
+                            </button>
                             {config.players.map((p) => (
                               <button
                                 key={p.id}
