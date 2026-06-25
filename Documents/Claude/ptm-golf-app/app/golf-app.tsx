@@ -947,26 +947,6 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         return { ...r, games: newGames };
       })
     );
-    // Auto-save whenever holes are updated
-    setTimeout(() => {
-      const updatedRounds = rounds.map((r, i) => {
-        if (i !== roundTab) return r;
-        return {
-          ...r,
-          games: (r.games || []).map((g) =>
-            g.templateId === templateId ? { ...g, holes } : g
-          ),
-        };
-      });
-      const config = {
-        eventName,
-        rounds: updatedRounds,
-        players,
-        matches,
-        allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
-      };
-      onSave?.(config);
-    }, 500);
   }
 
   function exportConfig() {
