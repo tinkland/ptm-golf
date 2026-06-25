@@ -308,14 +308,19 @@ function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRoun
     let roundScores = null;
     let foundScores = false;
 
-    // Try group-based scores first
-    if (round.groups && round.groups.length > 0) {
+    // Try group-based scores first - merge all groups
+    if (round.groups && round.groups.length > 0 && allScoresByRound[round.id]) {
+      const merged = { playerScores: {}, jokerHoles: {} };
       for (const group of round.groups) {
-        if (allScoresByRound[round.id] && allScoresByRound[round.id][group.id]) {
-          roundScores = allScoresByRound[round.id][group.id];
-          foundScores = true;
-          break;
+        if (allScoresByRound[round.id][group.id]) {
+          const groupScores = allScoresByRound[round.id][group.id];
+          if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
+          if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
         }
+      }
+      if (Object.keys(merged.playerScores).length > 0) {
+        roundScores = merged;
+        foundScores = true;
       }
     }
 
@@ -2227,7 +2232,7 @@ function EndOfRoundGamesScreen({ config, round, groupId, gameEntries, onEntriesC
                           </div>
                         ) : (
                           <div className="flex flex-col gap-1">
-                            {groupPlayers.map((p) => (
+                            {config.players.map((p) => (
                               <button
                                 key={p.id}
                                 onClick={() => {
