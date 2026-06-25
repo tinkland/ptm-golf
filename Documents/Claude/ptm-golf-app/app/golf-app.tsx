@@ -1668,35 +1668,29 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
 
 
   const handleComplete = () => {
-    // Reorganize Day 2 groups by score
-    let newDay2Round = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
+    let newDay2Round = null;
 
-    // Apply manual group assignments if any
-    if (Object.keys(manualGroupAssignments).length > 0) {
-      const updatedGroups = newDay2Round.groups.map((group) => ({
-        ...group,
-        playerIds: group.playerIds.filter((pid) => !manualGroupAssignments[pid]),
-      }));
+    if (dayTwoRound) {
+      // Reorganize Day 2 groups by score
+      newDay2Round = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
 
-      // Add manually assigned players to their new groups
-      Object.entries(manualGroupAssignments).forEach(([playerId, groupId]: [string, any]) => {
-        const targetGroup = updatedGroups.find((g) => g.id === groupId);
-        if (targetGroup && !targetGroup.playerIds.includes(playerId)) {
-          targetGroup.playerIds.push(playerId);
-        }
-      });
-
-      newDay2Round = { ...newDay2Round, groups: updatedGroups };
+      // Apply manual group assignments if any
+      if (Object.keys(manualGroupAssignments).length > 0) {
+        const updatedGroups = newDay2Round.groups.map((group) => ({
+          ...group,
+          playerIds: group.playerIds.filter((pid) => !manualGroupAssignments[pid]),
+        }));
+        Object.entries(manualGroupAssignments).forEach(([playerId, groupId]: [string, any]) => {
+          const targetGroup = updatedGroups.find((g) => g.id === groupId);
+          if (targetGroup && !targetGroup.playerIds.includes(playerId)) {
+            targetGroup.playerIds.push(playerId);
+          }
+        });
+        newDay2Round = { ...newDay2Round, groups: updatedGroups };
+      }
     }
 
-    // Save game winners and teams
-    const eventData = {
-      gameWinners,
-      dayTwoTeams: teams,
-      dayTwoRound: newDay2Round,
-    };
-
-    onComplete(eventData);
+    onComplete({ gameWinners, dayTwoTeams: teams, dayTwoRound: newDay2Round });
   };
 
   return (
@@ -1919,8 +1913,8 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
         </div>
       )}
 
-      {/* Day 2 Groups (Reorganized) */}
-      <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
+      {/* Day 2 Groups (Reorganized) - only if there is a next round */}
+      {dayTwoRound && <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
         <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>Day 2 Groups (by Day 1 Score)</h3>
         <div className="space-y-3">
           {(() => {
@@ -1943,23 +1937,20 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
             ));
           })()}
         </div>
-      </div>
+      </div>}
 
-      {/* Day 2 Group Assignments */}
-      <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
+      {/* Day 2 Group Assignments - only if there is a next round */}
+      {dayTwoRound && <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
         <div className="bg-white p-4" style={{ backgroundColor: COLORS.goldPale }}>
           <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 Day 2 Group Assignments</h3>
           <p className="text-xs opacity-60 mt-1">Auto-sorted by Day 1 results · Manual Change column to reassign if needed</p>
         </div>
         <div className="bg-white p-4">
-          {/* Header row */}
           <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: COLORS.line }}>
             <span className="flex-1 text-xs font-medium opacity-60">Player</span>
             <span className="w-24 text-xs font-medium opacity-60">Assigned Group</span>
             <span className="w-32 text-xs font-medium opacity-60">Manual Change</span>
           </div>
-
-          {/* Player rows */}
           <div className="space-y-2">
             {config.players.map((player) => {
               const autoSortedRound = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
@@ -1967,46 +1958,33 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
               const autoGroupId = autoSortedRound.groups.find((g) => g.playerIds.includes(player.id))?.id;
               const currentGroupId = assignedGroupId || autoGroupId;
               const currentGroup = dayTwoRound.groups.find((g) => g.id === currentGroupId);
-
               return (
                 <div key={player.id} className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: COLORS.cream }}>
-                  <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>
-                    {player.name}
-                  </span>
-                  <span className="w-24 text-sm" style={{ color: COLORS.green }}>
-                    {currentGroup?.name || "—"}
-                  </span>
+                  <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>{player.name}</span>
+                  <span className="w-24 text-sm" style={{ color: COLORS.green }}>{currentGroup?.name || "—"}</span>
                   <select
                     value={currentGroupId || ""}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setManualGroupAssignments({ ...manualGroupAssignments, [player.id]: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => { if (e.target.value) setManualGroupAssignments({ ...manualGroupAssignments, [player.id]: e.target.value }); }}
                     className="w-32 px-2 py-1 rounded text-sm border"
                     style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
                   >
                     <option value="">Select group...</option>
-                    {dayTwoRound.groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
+                    {dayTwoRound.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
               );
             })}
           </div>
         </div>
-      </div>
+      </div>}
 
-      {/* Complete Day 1 Button */}
+      {/* Complete Button */}
       <button
         onClick={handleComplete}
         className="w-full py-3 rounded-lg font-medium text-sm"
         style={{ backgroundColor: COLORS.green, color: "white" }}
       >
-        Complete Day 1 → Start Day 2
+        {dayTwoRound ? "Complete Day 1 → Start Day 2" : "Complete Tournament"}
       </button>
     </div>
   );
@@ -3161,39 +3139,55 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
               <h3 className="text-sm font-medium mb-2" style={{ color: COLORS.green }}>Games</h3>
               <div className="flex flex-col gap-2">
                 {selectedRound.games.map((game) => {
-                  // Find winner for this game (check all groups)
-                  let winner = null;
-                  if (game.templateId === "sandy") {
+                  const savedWinners = selectedRound.gameWinners || {};
+
+                  // Per-hole on-course games
+                  if (game.holes && game.holes.length > 1) {
+                    return (
+                      <div key={game.id} className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
+                        <p className="text-xs font-medium mb-2" style={{ color: COLORS.green }}>{game.emoji} {game.name}</p>
+                        <div className="space-y-1 pl-2">
+                          {game.holes.map((holeNum) => {
+                            const winnerId = savedWinners[`oncourse-${game.templateId}-hole-${holeNum}`];
+                            const winnerName = config.players.find((p) => p.id === winnerId)?.name;
+                            return (
+                              <div key={holeNum} className="flex justify-between text-xs">
+                                <span style={{ color: COLORS.charcoal }}>Hole {holeNum}</span>
+                                <span style={{ color: COLORS.gold, fontWeight: "600" }}>{winnerName || "—"}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Single-hole or daily games
+                  let winnerId = savedWinners[`oncourse-${game.templateId}`] || savedWinners[`daily-${game.templateId}`];
+                  // Sandy: derive from gameEntries if no saved winner
+                  if (!winnerId && game.templateId === "sandy") {
                     for (const group of selectedRound.groups) {
                       for (const playerId of group.playerIds) {
-                        const hasSandy = gameEntries.some((e) => e.playerId === playerId && e.gameId === "sandy" && e.save);
-                        if (hasSandy) {
-                          winner = config.players.find((p) => p.id === playerId)?.name;
+                        if (gameEntries.some((e) => e.playerId === playerId && e.gameId === "sandy" && e.save)) {
+                          winnerId = playerId;
                           break;
                         }
                       }
-                      if (winner) break;
+                      if (winnerId) break;
                     }
                   }
+                  const winnerName = winnerId ? config.players.find((p) => p.id === winnerId)?.name : null;
 
                   return (
                     <div key={game.id} className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <p className="text-xs font-medium mb-1" style={{ color: COLORS.green }}>
-                            {game.emoji} {game.name}
-                          </p>
-                          {game.holes && game.holes.length > 0 && (
-                            <p className="text-xs" style={{ color: COLORS.charcoal }}>
-                              Holes: {game.holes.join(", ")}
-                            </p>
+                          <p className="text-xs font-medium mb-1" style={{ color: COLORS.green }}>{game.emoji} {game.name}</p>
+                          {game.holes && game.holes.length === 1 && (
+                            <p className="text-xs" style={{ color: COLORS.charcoal }}>Hole {game.holes[0]}</p>
                           )}
                         </div>
-                        {winner && (
-                          <p className="text-xs font-bold" style={{ color: COLORS.gold }}>
-                            {winner}
-                          </p>
-                        )}
+                        {winnerName && <p className="text-xs font-bold" style={{ color: COLORS.gold }}>{winnerName}</p>}
                       </div>
                     </div>
                   );
@@ -3367,125 +3361,129 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     const currentRoundIdx = config.rounds.findIndex((r) => r.id === activeRoundId);
     const nextRound = config.rounds[currentRoundIdx + 1];
 
-    if (nextRound) {
-      setFinishingRound(true);
+    setFinishingRound(true);
 
-      // Refresh all scores before showing end-of-day processing
-      if (eventId && config) {
-        const result = {};
+    // Refresh all scores before showing end-of-day processing
+    if (eventId && config) {
+      const result = {};
 
-        // Try to load from localStorage first (primary source)
-        for (const r of config.rounds) {
-          result[r.id] = {};
-          for (const g of r.groups) {
-            try {
-              const key = `golf-scores-${eventId}-${r.id}`;
-              const stored = localStorage.getItem(key);
-              if (stored) {
-                result[r.id][g.id] = JSON.parse(stored);
-              } else {
-                // If not in localStorage, try Firebase
-                result[r.id][g.id] = await getScoresFromFirebase(eventId, r.id, g.id);
-              }
-            } catch (err) {
-              console.warn(`Could not load scores for ${r.id}/${g.id}:`, err);
-              result[r.id][g.id] = { playerScores: {}, jokerHoles: {} };
+      // Try to load from localStorage first (primary source)
+      for (const r of config.rounds) {
+        result[r.id] = {};
+        for (const g of r.groups) {
+          try {
+            const key = `golf-scores-${eventId}-${r.id}`;
+            const stored = localStorage.getItem(key);
+            if (stored) {
+              result[r.id][g.id] = JSON.parse(stored);
+            } else {
+              // If not in localStorage, try Firebase
+              result[r.id][g.id] = await getScoresFromFirebase(eventId, r.id, g.id);
             }
+          } catch (err) {
+            console.warn(`Could not load scores for ${r.id}/${g.id}:`, err);
+            result[r.id][g.id] = { playerScores: {}, jokerHoles: {} };
           }
         }
-
-        // Store in ref and localStorage for later use
-        loadedScoresRef.current = result;
-        try {
-          localStorage.setItem(`golf-scores-${eventId}`, JSON.stringify(result));
-        } catch (e) {
-          console.warn("Could not save to localStorage:", e);
-        }
-        setAllScoresByRound(result);
       }
 
-      // Show end-of-day processing screen (admin only) or completion screen (scorers)
-      setFinishingRound(false);
-      if (effectiveIsAdmin) {
-        setShowEndOfDay(true);
-      } else {
-        // Non-admin scorers see a completion screen and wait
-        setTab("leaderboard");
+      // Store in ref and localStorage for later use
+      loadedScoresRef.current = result;
+      try {
+        localStorage.setItem(`golf-scores-${eventId}`, JSON.stringify(result));
+      } catch (e) {
+        console.warn("Could not save to localStorage:", e);
       }
+      setAllScoresByRound(result);
+    }
+
+    // Show end-of-day processing screen (admin always, scorers only if more rounds)
+    setFinishingRound(false);
+    if (effectiveIsAdmin) {
+      setShowEndOfDay(true);
     } else {
-      setFinishingRound(false);
-      celebrate("🎉 All rounds complete!");
-      setScreen("main");
+      if (nextRound) {
+        // Non-admin scorers wait on leaderboard while admin processes end of day
+        setTab("leaderboard");
+      } else {
+        celebrate("🎉 All rounds complete!");
+        setScreen("main");
+      }
     }
   };
 
   const handleEndOfDayComplete = (eventData: any) => {
     const currentRoundIdx = config.rounds.findIndex((r) => r.id === activeRoundId);
-    const nextRound = eventData.dayTwoRound; // Use reorganized groups from end-of-day
-    const dayOneRound = config.rounds[currentRoundIdx];
+    const nextRound = eventData.dayTwoRound; // null if this is the final round
+    const currentRound = config.rounds[currentRoundIdx];
 
     // Get scores from ref (loaded in handleFinishRound) - avoids state timing issues
-    const day1ScoresFromRef = loadedScoresRef.current?.[activeRoundId];
+    const currentScoresFromRef = loadedScoresRef.current?.[activeRoundId];
 
-    // Update config with new Day 2 groups, keeping same Best Ball Teams from Day 1
-    const updatedNextRound = {
-      ...nextRound,
-      bestBallTeams: dayOneRound.bestBallTeams, // Use same teams from Day 1
+    // Save game winners into the current round
+    const updatedCurrentRound = {
+      ...currentRound,
+      gameWinners: eventData.gameWinners || {},
     };
 
-    const updatedConfig = {
-      ...config,
-      currentRoundId: nextRound.id,
-      rounds: config.rounds.map((r) => (r.id === nextRound.id ? updatedNextRound : r)),
-    };
-
-    // Preserve ALL Day 1 scores - both in original structure AND as merged flat structure
+    // Preserve scores - both in original structure AND as merged flat structure
     setAllScoresByRound((cur) => {
       const updated = { ...cur };
-
-      // Keep the original group-based scores
-      if (day1ScoresFromRef) {
-        updated[activeRoundId] = day1ScoresFromRef;
-      }
-
-      // Also create a merged flat version as backup
-      const preservedDay1Scores = { playerScores: {}, jokerHoles: {} };
-      if (day1ScoresFromRef) {
-        Object.values(day1ScoresFromRef).forEach((groupScores: any) => {
-          if (groupScores?.playerScores) {
-            Object.assign(preservedDay1Scores.playerScores, groupScores.playerScores);
-          }
-          if (groupScores?.jokerHoles) {
-            Object.assign(preservedDay1Scores.jokerHoles, groupScores.jokerHoles);
-          }
+      if (currentScoresFromRef) {
+        updated[activeRoundId] = currentScoresFromRef;
+        const preserved = { playerScores: {}, jokerHoles: {} };
+        Object.values(currentScoresFromRef).forEach((groupScores: any) => {
+          if (groupScores?.playerScores) Object.assign(preserved.playerScores, groupScores.playerScores);
+          if (groupScores?.jokerHoles) Object.assign(preserved.jokerHoles, groupScores.jokerHoles);
         });
+        updated[`${activeRoundId}_preserved`] = preserved;
       }
-      updated[`${activeRoundId}_preserved`] = preservedDay1Scores;
-
       return updated;
     });
 
-    setConfig(updatedConfig);
-
-    // Persist updated config to localStorage (includes new Day 2 groups)
-    if (eventId) {
-      try {
-        localStorage.setItem(`event-${eventId}`, JSON.stringify(updatedConfig));
-      } catch (e) {
-        console.warn("Failed to save config to localStorage:", e);
+    if (nextRound) {
+      // Day transition — update next round groups and advance
+      const updatedNextRound = {
+        ...nextRound,
+        bestBallTeams: currentRound.bestBallTeams,
+      };
+      const updatedConfig = {
+        ...config,
+        currentRoundId: nextRound.id,
+        rounds: config.rounds.map((r) => {
+          if (r.id === activeRoundId) return updatedCurrentRound;
+          if (r.id === nextRound.id) return updatedNextRound;
+          return r;
+        }),
+      };
+      setConfig(updatedConfig);
+      if (eventId) {
+        try { localStorage.setItem(`event-${eventId}`, JSON.stringify(updatedConfig)); } catch (e) {}
+        saveEventToFirebase(eventId, userId, updatedConfig).catch(e => console.warn("Firebase save failed:", e));
       }
-      // Also save to Firebase
-      saveEventToFirebase(eventId, userId, updatedConfig).catch(e => console.warn("Firebase save failed:", e));
+      setActiveRoundId(nextRound.id);
+      setGroupSelections((cur) => ({ ...cur, [nextRound.id]: null }));
+      setScores({ playerScores: {}, jokerHoles: {} });
+      setGameEntries([]);
+      setTab("score");
+      setShowEndOfDay(false);
+      setScreen("join");
+      celebrate(`📍 Day 2 Setup Complete - ${nextRound.label} Ready`);
+    } else {
+      // Final round — save game winners and wrap up
+      const updatedConfig = {
+        ...config,
+        rounds: config.rounds.map((r) => r.id === activeRoundId ? updatedCurrentRound : r),
+      };
+      setConfig(updatedConfig);
+      if (eventId) {
+        try { localStorage.setItem(`event-${eventId}`, JSON.stringify(updatedConfig)); } catch (e) {}
+        saveEventToFirebase(eventId, userId, updatedConfig).catch(e => console.warn("Firebase save failed:", e));
+      }
+      setShowEndOfDay(false);
+      celebrate("🎉 Tournament Complete!");
+      setScreen("main");
     }
-
-    setActiveRoundId(nextRound.id);
-    setGroupSelections((cur) => ({ ...cur, [nextRound.id]: null }));
-    setScores({ playerScores: {}, jokerHoles: {} });
-    setGameEntries([]);
-    setTab("score");
-    setShowEndOfDay(false);
-    setScreen("join");
-    celebrate(`📍 Day 2 Setup Complete - ${nextRound.label} Ready`);
   };
 
   const handleSetupSave = async (newConfig: any) => {
