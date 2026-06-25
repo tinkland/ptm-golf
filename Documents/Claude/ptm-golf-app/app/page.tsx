@@ -240,6 +240,17 @@ export default function Home() {
     );
   }
 
+  // Check if there's an eventId (from URL or localStorage)
+  const params = new URLSearchParams(window.location.search);
+  const urlEventId = params.get("eventId");
+  const localEventId = localStorage.getItem("ptm-golf-eventId");
+  const hasEventId = urlEventId || localEventId;
+
+  // If there's an eventId but user is not logged in, require login first
+  if (!user && hasEventId) {
+    return <AuthUI />;
+  }
+
   if (!user) {
     if (showAdminModal) {
       return (
