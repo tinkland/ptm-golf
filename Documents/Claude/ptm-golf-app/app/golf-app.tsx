@@ -3185,16 +3185,6 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     getGameEntriesFromFirebase(eventId, activeRoundId, gid).then(setGameEntries);
   }, [eventId, activeRoundId, groupSelections, screen, config]);
 
-  useEffect(() => {
-    if (tab === "leaderboard" && eventId && config) {
-      // Refresh immediately when opening leaderboard
-      refreshAllScores();
-      // Then refresh every 5 seconds while leaderboard is open (for live sync across devices)
-      const interval = setInterval(refreshAllScores, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [tab, eventId, config, refreshAllScores]);
-
   const refreshAllScores = useCallback(async () => {
     if (!eventId || !config) return;
     const result = {};
@@ -3206,6 +3196,16 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     }
     setAllScoresByRound(result);
   }, [eventId, config]);
+
+  useEffect(() => {
+    if (tab === "leaderboard" && eventId && config) {
+      // Refresh immediately when opening leaderboard
+      refreshAllScores();
+      // Then refresh every 5 seconds while leaderboard is open (for live sync across devices)
+      const interval = setInterval(refreshAllScores, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [tab, eventId, config, refreshAllScores]);
 
   const handleScoreChange = (updated: any) => {
     setScores(updated);
