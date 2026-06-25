@@ -1,57 +1,103 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
   <defs>
-    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#1F3D2B"/>
-      <stop offset="100%" style="stop-color:#2D5A3D"/>
+    <clipPath id="circle">
+      <circle cx="96" cy="96" r="92"/>
+    </clipPath>
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB"/>
+      <stop offset="100%" style="stop-color:#C8E8F0"/>
     </linearGradient>
-    <linearGradient id="flagGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#B5432D"/>
-      <stop offset="100%" style="stop-color:#8B2E1F"/>
+    <linearGradient id="hillGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A8A3A"/>
+      <stop offset="100%" style="stop-color:#2D6B25"/>
+    </linearGradient>
+    <linearGradient id="fairwayGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3A7A2A"/>
+      <stop offset="100%" style="stop-color:#1F5A18"/>
+    </linearGradient>
+    <linearGradient id="ballGrad" x1="20%" y1="10%" x2="80%" y2="90%">
+      <stop offset="0%" style="stop-color:#FFFFF0"/>
+      <stop offset="60%" style="stop-color:#E8DEB0"/>
+      <stop offset="100%" style="stop-color:#C8B870"/>
+    </linearGradient>
+    <radialGradient id="ballShine" cx="35%" cy="30%" r="50%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.9"/>
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0"/>
+    </radialGradient>
+    <linearGradient id="waterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5BA8D4"/>
+      <stop offset="100%" style="stop-color:#3D8AB8"/>
+    </linearGradient>
+    <linearGradient id="pathGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5A9A48"/>
+      <stop offset="100%" style="stop-color:#3A7A28"/>
     </linearGradient>
   </defs>
 
-  <!-- Background -->
-  <rect width="192" height="192" fill="url(#bgGradient)" rx="45"/>
+  <!-- Circular border -->
+  <circle cx="96" cy="96" r="92" fill="#1F3D2B"/>
 
-  <!-- Sky gradient -->
-  <rect width="192" height="110" fill="#87CEEB" opacity="0.2" rx="45"/>
+  <!-- Clipped content -->
+  <g clip-path="url(#circle)">
+    <!-- Sky -->
+    <rect x="4" y="4" width="184" height="184" fill="url(#skyGrad)"/>
 
-  <!-- Mountains/hills background -->
-  <path d="M 0 100 Q 48 50 96 70 Q 144 50 192 100 L 192 192 Q 96 180 0 192 Z" fill="#3A6B4A" opacity="0.3"/>
+    <!-- Background hills far -->
+    <path d="M 4 90 Q 40 55 75 72 Q 100 60 130 68 Q 158 55 188 75 L 188 110 L 4 110 Z" fill="#5A9A48" opacity="0.7"/>
 
-  <!-- Fairway grass -->
-  <ellipse cx="96" cy="135" rx="70" ry="35" fill="#4A8A5E" opacity="0.5"/>
+    <!-- Background hills near -->
+    <path d="M 4 100 Q 50 70 90 85 Q 120 75 160 88 L 188 95 L 188 130 L 4 130 Z" fill="url(#hillGrad)"/>
 
-  <!-- Flag pole -->
-  <rect x="88" y="60" width="6" height="65" fill="#8B6F47" rx="3"/>
+    <!-- Water hazard -->
+    <ellipse cx="115" cy="112" rx="28" ry="10" fill="url(#waterGrad)" opacity="0.85"/>
+    <!-- Water shimmer -->
+    <path d="M 100 110 Q 110 108 120 110 Q 130 112 140 110" stroke="#87CEEB" stroke-width="1.5" fill="none" opacity="0.6"/>
 
-  <!-- Flag waving -->
-  <path d="M 94 60 Q 115 58 125 68 Q 115 75 94 73 Z" fill="url(#flagGrad)" rx="2"/>
+    <!-- Fairway path leading to flag -->
+    <path d="M 55 188 Q 80 160 95 140 Q 105 125 112 108 Q 118 95 120 85" stroke="url(#pathGrad)" stroke-width="18" fill="none" stroke-linecap="round" opacity="0.6"/>
 
-  <!-- Flag details -->
-  <circle cx="105" cy="65" r="3" fill="#F2E3BC" opacity="0.7"/>
+    <!-- Main fairway green -->
+    <path d="M 4 130 Q 50 118 100 125 Q 140 130 188 120 L 188 188 L 4 188 Z" fill="url(#fairwayGrad)"/>
 
-  <!-- Golf ball on fairway -->
-  <circle cx="96" cy="125" r="16" fill="#FFFFFF"/>
+    <!-- Flag pole -->
+    <line x1="122" y1="58" x2="122" y2="108" stroke="#8B7355" stroke-width="3" stroke-linecap="round"/>
 
-  <!-- Golf ball dimples -->
-  <g fill="#1F3D2B" opacity="0.4">
-    <circle cx="85" cy="115" r="2.5"/>
-    <circle cx="96" cy="112" r="2.5"/>
-    <circle cx="107" cy="115" r="2.5"/>
-    <circle cx="82" cy="125" r="2.5"/>
-    <circle cx="110" cy="125" r="2.5"/>
-    <circle cx="85" cy="135" r="2.5"/>
-    <circle cx="96" cy="138" r="2.5"/>
-    <circle cx="107" cy="135" r="2.5"/>
+    <!-- Flag (waving gold) -->
+    <path d="M 122 58 Q 140 62 148 70 Q 140 76 122 76 Z" fill="#C7972F"/>
+    <path d="M 122 58 Q 138 64 144 70 Q 136 75 122 76 Z" fill="#E8B840"/>
+
+    <!-- Flag pole base -->
+    <ellipse cx="122" cy="108" rx="6" ry="3" fill="#5A4A2A" opacity="0.5"/>
+
+    <!-- Swing arc (motion trail) -->
+    <path d="M 30 155 Q 55 120 80 105 Q 95 98 105 92" stroke="#C7972F" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7" stroke-dasharray="4,3"/>
+
+    <!-- Golf ball (large, foreground) -->
+    <circle cx="48" cy="148" r="38" fill="url(#ballGrad)"/>
+
+    <!-- Ball dimple pattern -->
+    <g fill="#8B7D50" opacity="0.35">
+      <circle cx="35" cy="138" r="3"/>
+      <circle cx="48" cy="133" r="3"/>
+      <circle cx="61" cy="138" r="3"/>
+      <circle cx="28" cy="148" r="3"/>
+      <circle cx="42" cy="143" r="3"/>
+      <circle cx="55" cy="143" r="3"/>
+      <circle cx="68" cy="148" r="3"/>
+      <circle cx="35" cy="158" r="3"/>
+      <circle cx="48" cy="163" r="3"/>
+      <circle cx="61" cy="158" r="3"/>
+      <circle cx="32" cy="134" r="2.5"/>
+      <circle cx="64" cy="134" r="2.5"/>
+    </g>
+
+    <!-- Ball shine -->
+    <circle cx="48" cy="148" r="38" fill="url(#ballShine)"/>
+
+    <!-- Circular border stroke -->
+    <circle cx="96" cy="96" r="91" fill="none" stroke="#1F3D2B" stroke-width="2"/>
   </g>
 
-  <!-- Ball shine/highlight -->
-  <circle cx="90" cy="118" r="5" fill="#FFFFFF" opacity="0.6"/>
-
-  <!-- Decorative elements: small flag in distance -->
-  <g opacity="0.3">
-    <rect x="150" y="95" width="3" height="20" fill="#C7972F"/>
-    <rect x="153" y="95" width="15" height="8" fill="#B5432D"/>
-  </g>
+  <!-- Outer ring -->
+  <circle cx="96" cy="96" r="92" fill="none" stroke="#C7972F" stroke-width="4"/>
 </svg>
