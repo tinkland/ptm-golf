@@ -206,13 +206,22 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
 
     // Check all rounds for holes with this stroke index
     rounds.forEach((round) => {
-      const group = getPlayerGroup(round, player.id);
-      // Use current scores for active round, otherwise use allScoresByRound
-      const scoreObj = group && (
-        round.id === currentRoundId
-          ? currentScores
-          : (allScoresByRound[round.id] && allScoresByRound[round.id][group.id])
-      );
+      let scoreObj = null;
+
+      if (round.id === currentRoundId) {
+        // Use current scores for active round
+        scoreObj = currentScores;
+      } else {
+        // For past rounds, merge all groups (groups may have been reorganized)
+        if (allScoresByRound[round.id]) {
+          const merged = { playerScores: {}, jokerHoles: {} };
+          Object.values(allScoresByRound[round.id]).forEach((groupScores: any) => {
+            if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
+            if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
+          });
+          scoreObj = merged;
+        }
+      }
 
       if (scoreObj) {
         const ph = getPH(round.course, player, allowancePct);
