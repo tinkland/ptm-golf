@@ -1650,7 +1650,16 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
-      <h2 className="font-display text-2xl mb-6" style={{ color: COLORS.green }}>Day 1 Summary & Day 2 Setup</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Day 1 Summary & Day 2 Setup</h2>
+        <button
+          onClick={() => window.history.back()}
+          className="p-2 rounded-lg hover:bg-gray-100"
+          title="Return to board"
+        >
+          <ChevronLeft size={24} style={{ color: COLORS.charcoal }} />
+        </button>
+      </div>
 
       {/* Day Results */}
       <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
@@ -1834,40 +1843,55 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
       {/* Day 2 Group Assignments */}
       <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
         <div className="bg-white p-4" style={{ backgroundColor: COLORS.goldPale }}>
-          <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 Day 2 Group Assignments (Optional)</h3>
-          <p className="text-xs opacity-60 mt-1">Reassign players if needed - auto-sorted by score otherwise</p>
+          <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 Day 2 Group Assignments</h3>
+          <p className="text-xs opacity-60 mt-1">Auto-sorted by Day 1 results · Manual Change column to reassign if needed</p>
         </div>
-        <div className="bg-white p-4 space-y-3">
-          {config.players.map((player) => {
-            // Find which group this player is in (from auto-sort or manual assignment)
-            const autoSortedRound = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
-            const playerGroup = manualGroupAssignments[player.id] || autoSortedRound.groups.find((g) => g.playerIds.includes(player.id));
+        <div className="bg-white p-4">
+          {/* Header row */}
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: COLORS.line }}>
+            <span className="flex-1 text-xs font-medium opacity-60">Player</span>
+            <span className="w-24 text-xs font-medium opacity-60">Assigned Group</span>
+            <span className="w-32 text-xs font-medium opacity-60">Manual Change</span>
+          </div>
 
-            return (
-              <div key={player.id} className="flex items-center gap-2">
-                <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>
-                  {player.name}
-                </span>
-                <select
-                  value={playerGroup?.id || ""}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setManualGroupAssignments({ ...manualGroupAssignments, [player.id]: e.target.value });
-                    }
-                  }}
-                  className="px-2 py-1 rounded text-sm border"
-                  style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
-                >
-                  <option value="">Select group...</option>
-                  {dayTwoRound.groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+          {/* Player rows */}
+          <div className="space-y-2">
+            {config.players.map((player) => {
+              const autoSortedRound = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
+              const assignedGroupId = manualGroupAssignments[player.id];
+              const autoGroupId = autoSortedRound.groups.find((g) => g.playerIds.includes(player.id))?.id;
+              const currentGroupId = assignedGroupId || autoGroupId;
+              const currentGroup = dayTwoRound.groups.find((g) => g.id === currentGroupId);
+
+              return (
+                <div key={player.id} className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: COLORS.cream }}>
+                  <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>
+                    {player.name}
+                  </span>
+                  <span className="w-24 text-sm" style={{ color: COLORS.green }}>
+                    {currentGroup?.name || "—"}
+                  </span>
+                  <select
+                    value={currentGroupId || ""}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setManualGroupAssignments({ ...manualGroupAssignments, [player.id]: e.target.value });
+                      }
+                    }}
+                    className="w-32 px-2 py-1 rounded text-sm border"
+                    style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
+                  >
+                    <option value="">Select group...</option>
+                    {dayTwoRound.groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
