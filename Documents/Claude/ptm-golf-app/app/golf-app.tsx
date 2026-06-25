@@ -3162,13 +3162,13 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
         setAllScoresByRound(result);
       }
 
-      // Show end-of-day processing screen (admin only) or go back to main (scorers)
+      // Show end-of-day processing screen (admin only) or completion screen (scorers)
       setFinishingRound(false);
       if (isAdmin) {
         setShowEndOfDay(true);
       } else {
-        celebrate("✅ Round submitted! Admin will process results.");
-        setScreen("main");
+        // Non-admin scorers see a completion screen and wait
+        setTab("leaderboard");
       }
     } else {
       setFinishingRound(false);
