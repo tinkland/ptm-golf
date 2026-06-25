@@ -308,9 +308,24 @@ export default function Home() {
     console.log("EventId from localStorage:", eventId); // DEBUG
   }
 
+  // Check if this user is the admin of the event (by matching userId)
+  let isEventAdmin = false;
+  if (eventId && !adminModeAfterLogin) {
+    try {
+      const eventData = localStorage.getItem(`event-${eventId}`);
+      if (eventData) {
+        const config = JSON.parse(eventData);
+        // If the event has an adminUserId stored AND it matches the current user, they're the admin
+        isEventAdmin = config.adminUserId && config.adminUserId === user.uid;
+      }
+    } catch (err) {
+      console.warn("Could not check admin status:", err);
+    }
+  }
+
   // Only auto-route to scorer if eventId came from URL or localStorage (not admin creating event)
   if (eventId && !adminModeAfterLogin) {
-    return <GolfApp userId={user.uid} isAdmin={false} />;
+    return <GolfApp userId={user.uid} isAdmin={isEventAdmin} />;
   }
 
   if (adminModeAfterLogin) {

@@ -3238,6 +3238,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
       const newEventId = uid();
       const configWithIds = {
         ...newConfig,
+        adminUserId: userId !== "admin" ? userId : undefined, // Store admin's userId for later identification
         rounds: newConfig.rounds.map((r) => ({
           ...r,
           games: (r.games || []).map((g) => ({
