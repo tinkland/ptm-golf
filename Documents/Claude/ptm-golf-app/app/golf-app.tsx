@@ -1756,11 +1756,13 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
     }
   }
 
+  // Recompute ascending groups whenever score data arrives (handles async Firebase load)
+  const allScoresCount = Object.keys(allScores).length + Object.keys(propAllScoresByRound).length;
   useEffect(() => {
-    if (dayTwoRound) {
+    if (dayTwoRound && groupMode === "ascending") {
       setBaseGroups(computeBaseGroups("ascending"));
     }
-  }, []);
+  }, [allScoresCount]); // eslint-disable-line
 
   function handleModeChange(mode: "ascending"|"random"|"manual") {
     setGroupMode(mode);
@@ -1814,6 +1816,18 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
 
     onComplete({ gameWinners, dayTwoTeams: teams, dayTwoRound: newDay2Round });
   };
+
+  // Compute final groups applying any manual overrides on top of base groups
+  const finalGroups = (() => {
+    const groups = baseGroups || [];
+    if (!groups.length) return groups;
+    const updated = groups.map(g => ({ ...g, playerIds: [...g.playerIds.filter(pid => !manualGroupAssignments[pid])] }));
+    Object.entries(manualGroupAssignments).forEach(([pid, gid]: [string, any]) => {
+      const tg = updated.find(g => g.id === gid);
+      if (tg && !tg.playerIds.includes(pid)) tg.playerIds.push(pid);
+    });
+    return updated;
+  })();
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
@@ -2035,76 +2049,53 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
         </div>
       )}
 
-      {/* Next round groups - only if there is a next round */}
-      {dayTwoRound && <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium" style={{ color: COLORS.green }}>{dayTwoRound?.label} Groups</h3>
-          <div className="flex gap-1">
-            {(["ascending","random","manual"] as const).map(m => (
-              <button key={m} onClick={() => handleModeChange(m)}
-                className="px-2 py-1 rounded text-xs font-medium"
-                style={{ backgroundColor: groupMode === m ? COLORS.green : COLORS.cream, color: groupMode === m ? "white" : COLORS.charcoal, border: `1px solid ${groupMode === m ? COLORS.green : COLORS.line}` }}>
-                {m === "ascending" ? "By Score" : m.charAt(0).toUpperCase() + m.slice(1)}
-              </button>
+      {/* Next round group assignment — mode selector + per-player dropdowns in one card */}
+      {dayTwoRound && (
+        <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium" style={{ color: COLORS.green }}>{dayTwoRound.label} Groups</h3>
+            <div className="flex gap-1">
+              {(["ascending","random","manual"] as const).map(m => (
+                <button key={m} onClick={() => handleModeChange(m)}
+                  className="px-2 py-1 rounded text-xs font-medium"
+                  style={{ backgroundColor: groupMode === m ? COLORS.green : COLORS.cream, color: groupMode === m ? "white" : COLORS.charcoal, border: `1px solid ${groupMode === m ? COLORS.green : COLORS.line}` }}>
+                  {m === "ascending" ? "By Score" : m.charAt(0).toUpperCase() + m.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            {finalGroups.map((group, gidx) => (
+              <div key={group.id || gidx} className="rounded-lg overflow-hidden border" style={{ borderColor: COLORS.line }}>
+                <div className="px-3 py-1.5" style={{ backgroundColor: COLORS.greenPale }}>
+                  <span className="text-xs font-semibold" style={{ color: COLORS.green }}>{group.name || `Group ${gidx + 1}`}</span>
+                </div>
+                {group.playerIds.map(pid => {
+                  const player = config.players.find(p => p.id === pid);
+                  const scoreEntry = leaderboard.find(e => e.player.id === pid);
+                  return (
+                    <div key={pid} className="flex items-center gap-2 px-3 py-2 border-t" style={{ borderColor: COLORS.line }}>
+                      <span className="flex-1 text-sm" style={{ color: COLORS.charcoal }}>{player?.name || pid}</span>
+                      <span className="text-xs mr-1" style={{ color: COLORS.gold }}>{scoreEntry?.raw ?? "—"} pts</span>
+                      <select
+                        value={group.id}
+                        onChange={e => {
+                          const newGid = e.target.value;
+                          if (newGid && newGid !== group.id) setManualGroupAssignments(prev => ({ ...prev, [pid]: newGid }));
+                        }}
+                        className="text-xs rounded px-1.5 py-1 border"
+                        style={{ borderColor: COLORS.line, color: COLORS.charcoal, minWidth: "80px" }}
+                      >
+                        {(baseGroups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
             ))}
           </div>
         </div>
-        <div className="space-y-3">
-          {(baseGroups || []).map((group, idx) => (
-            <div key={group.id || idx} className="p-2 rounded" style={{ backgroundColor: COLORS.greenPale }}>
-              <p className="text-xs font-medium mb-1" style={{ color: COLORS.green }}>{group.name || `Group ${idx + 1}`}</p>
-              {group.playerIds.map((pid) => {
-                const entry = leaderboard.find(e => e.player.id === pid);
-                return (
-                  <p key={pid} className="text-sm flex justify-between">
-                    <span>{entry?.player.name || config.players.find(p => p.id === pid)?.name || pid}</span>
-                    <span style={{ color: COLORS.gold, fontWeight: "500" }}>{entry?.raw ?? "—"} pts</span>
-                  </p>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>}
-
-      {/* Day 2 Group Assignments - only if there is a next round */}
-      {dayTwoRound && <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
-        <div className="bg-white p-4" style={{ backgroundColor: COLORS.goldPale }}>
-          <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 {dayTwoRound?.label} Group Assignments</h3>
-          <p className="text-xs opacity-60 mt-1">Override individual assignments if needed</p>
-        </div>
-        <div className="bg-white p-4">
-          <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: COLORS.line }}>
-            <span className="flex-1 text-xs font-medium opacity-60">Player</span>
-            <span className="w-24 text-xs font-medium opacity-60">Assigned Group</span>
-            <span className="w-32 text-xs font-medium opacity-60">Override</span>
-          </div>
-          <div className="space-y-2">
-            {config.players.filter(p => p.name).map((player) => {
-              const groups = baseGroups || dayTwoRound.groups;
-              const assignedGroupId = manualGroupAssignments[player.id];
-              const autoGroupId = groups.find((g) => g.playerIds.includes(player.id))?.id;
-              const currentGroupId = assignedGroupId || autoGroupId;
-              const currentGroup = groups.find((g) => g.id === currentGroupId);
-              return (
-                <div key={player.id} className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: COLORS.cream }}>
-                  <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>{player.name}</span>
-                  <span className="w-24 text-sm" style={{ color: COLORS.green }}>{currentGroup?.name || "—"}</span>
-                  <select
-                    value={currentGroupId || ""}
-                    onChange={(e) => { if (e.target.value) setManualGroupAssignments({ ...manualGroupAssignments, [player.id]: e.target.value }); }}
-                    className="w-32 px-2 py-1 rounded text-sm border"
-                    style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
-                  >
-                    <option value="">Select group...</option>
-                    {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>}
+      )}
 
       {/* Complete Button */}
       <button
@@ -3333,6 +3324,42 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
         </>
       )}
 
+      {/* Overall Standings to this point */}
+      {selectedRound && (() => {
+        const selectedIdx = config.rounds.findIndex(r => r.id === selectedRoundId);
+        const roundsToDate = config.rounds.slice(0, selectedIdx + 1).filter(r => !r.excludeFromOverall);
+        if (roundsToDate.length === 0) return null;
+        const playerTotals = config.players.filter(p => p.name).map(p => {
+          let total = 0;
+          roundsToDate.forEach(r => {
+            const roundScores = allScoresByRound[r.id] || {};
+            const group = getPlayerGroup(r, p.id);
+            const so = group ? roundScores[group.id] : null;
+            if (so) {
+              const stats = computePlayerRoundStats(r, p, allowance, so);
+              total += r.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
+            }
+          });
+          return { player: p, total };
+        }).sort((a, b) => b.total - a.total);
+        return (
+          <div className="mb-4">
+            <h3 className="text-sm font-medium mb-2" style={{ color: COLORS.green }}>
+              Overall Standings (after {selectedRound.label})
+            </h3>
+            <div className="rounded-xl overflow-hidden border" style={{ borderColor: COLORS.line }}>
+              {playerTotals.map(({ player, total }, idx) => (
+                <div key={player.id} className="flex items-center justify-between px-4 py-2 border-t first:border-t-0"
+                  style={{ borderColor: COLORS.line, backgroundColor: idx === 0 ? COLORS.goldPale : "white" }}>
+                  <span className="text-sm font-medium" style={{ color: COLORS.charcoal }}>{idx + 1}. {player.name}</span>
+                  <span className="text-sm font-bold" style={{ color: COLORS.gold }}>{total} pts</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       <p className="text-xs mt-4 text-center opacity-60" style={{ color: COLORS.charcoal }}>
         Results by group · Complete data from {selectedRound?.label}
       </p>
@@ -3483,7 +3510,9 @@ function RoundsAdmin({ config, currentRoundId, onSave, onBack }) {
 }
 
 // PlayersAdmin Component — withdraw, replace, or add players mid-event
-function PlayersAdmin({ config, currentRoundId, onSave, onBack }) {
+// Uses save-on-exit: changes are held in local state and saved once when Back is pressed
+function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack }) {
+  const [localConfig, setLocalConfig] = useState(initialConfig);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editHcp, setEditHcp] = useState("");
@@ -3492,7 +3521,7 @@ function PlayersAdmin({ config, currentRoundId, onSave, onBack }) {
   const [addName, setAddName] = useState("");
   const [addHcp, setAddHcp] = useState("");
 
-  const currentRound = config.rounds.find(r => r.id === currentRoundId) || config.rounds[0];
+  const currentRound = localConfig.rounds.find(r => r.id === currentRoundId) || localConfig.rounds[0];
 
   function startEdit(p) {
     setEditingId(p.id);
@@ -3503,20 +3532,20 @@ function PlayersAdmin({ config, currentRoundId, onSave, onBack }) {
 
   function saveEdit(playerId) {
     const hcp = parseFloat(editHcp);
-    const updatedPlayers = config.players.map(p =>
+    const updatedPlayers = localConfig.players.map(p =>
       p.id === playerId ? { ...p, name: editName.trim(), handicap: isNaN(hcp) ? p.handicap : hcp } : p
     );
-    onSave({ ...config, players: updatedPlayers });
+    setLocalConfig(c => ({ ...c, players: updatedPlayers }));
     setEditingId(null);
   }
 
   function removePlayer(playerId) {
-    const updatedPlayers = config.players.filter(p => p.id !== playerId);
-    const updatedRounds = config.rounds.map(r => ({
+    const updatedPlayers = localConfig.players.filter(p => p.id !== playerId);
+    const updatedRounds = localConfig.rounds.map(r => ({
       ...r,
       groups: r.groups.map(g => ({ ...g, playerIds: g.playerIds.filter(pid => pid !== playerId) })),
     }));
-    onSave({ ...config, players: updatedPlayers, rounds: updatedRounds });
+    setLocalConfig(c => ({ ...c, players: updatedPlayers, rounds: updatedRounds }));
     setConfirmId(null);
   }
 
@@ -3524,14 +3553,14 @@ function PlayersAdmin({ config, currentRoundId, onSave, onBack }) {
     if (!addName.trim()) return;
     const hcp = parseFloat(addHcp);
     const newPlayer = { id: uid(), name: addName.trim(), handicap: isNaN(hcp) ? 0 : hcp };
-    onSave({ ...config, players: [...config.players, newPlayer] });
+    setLocalConfig(c => ({ ...c, players: [...c.players, newPlayer] }));
     setAddName(""); setAddHcp(""); setShowAdd(false);
   }
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 pb-24" style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
       <div className="flex items-center gap-3 mb-2">
-        <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-100">
+        <button onClick={() => { onSave(localConfig); onBack(); }} className="p-2 rounded-lg hover:bg-gray-100">
           <ChevronLeft size={24} style={{ color: COLORS.charcoal }} />
         </button>
         <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Manage Players</h2>
@@ -3539,7 +3568,7 @@ function PlayersAdmin({ config, currentRoundId, onSave, onBack }) {
       <p className="text-xs opacity-60 mb-4 ml-1">Edit/Replace updates name &amp; handicap — all recorded scores are kept. Remove clears the player from all groups.</p>
 
       <div className="flex flex-col gap-2 mb-4">
-        {config.players.filter(p => p.name).map(p => {
+        {localConfig.players.filter(p => p.name).map(p => {
           const group = currentRound ? getPlayerGroup(currentRound, p.id) : null;
 
           if (editingId === p.id) {
