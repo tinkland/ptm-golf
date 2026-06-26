@@ -91,33 +91,41 @@ function getPlayerGroup(round, playerId) {
   return round.groups.find((g) => g.playerIds.includes(playerId));
 }
 
+// Compute balanced group sizes (smaller groups go first)
+// e.g. 7→[3,4], 10→[3,3,4], 11→[3,4,4]
+function computeGroupSizes(numPlayers) {
+  if (numPlayers <= 0) return [];
+  const numGroups = Math.ceil(numPlayers / 4);
+  const baseSize = Math.floor(numPlayers / numGroups);
+  const remainder = numPlayers % numGroups;
+  return Array.from({ length: numGroups }, (_, i) =>
+    i < numGroups - remainder ? baseSize : baseSize + 1
+  );
+}
+
+// Build group objects from an ordered list of player IDs, preserving existing tee times
+function buildGroupsFromOrderedPlayers(orderedPlayerIds, existingGroups) {
+  const sizes = computeGroupSizes(orderedPlayerIds.length);
+  let idx = 0;
+  return sizes.map((size, g) => {
+    const groupPlayerIds = orderedPlayerIds.slice(idx, idx + size);
+    idx += size;
+    return { id: uid(), name: `Group ${g + 1}`, playerIds: groupPlayerIds, teeTime: existingGroups[g]?.teeTime || "" };
+  });
+}
+
 function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allowance) {
-  // Get all players with their Day 1 scores, sorted by score (worst first, so best players end up in last group)
   const playerScores = players
     .map((p) => {
       const group = getPlayerGroup(prevRound, p.id);
       const scoreObj = group && allScores[group.id];
       const stats = computePlayerRoundStats(prevRound, p, allowance, scoreObj);
-      return { player: p, score: stats.raw, gross: stats.gross };
+      return { player: p, score: stats.raw };
     })
-    .sort((a, b) => a.score - b.score); // Sort ascending (worst scores first, leaders last)
+    .sort((a, b) => a.score - b.score); // ascending: worst first, leaders in last group
 
-  // Create new groups of 4 (or existing group size)
-  const groupSize = prevRound.groups[0]?.playerIds.length || 4;
-  const newGroups = [];
-
-  for (let i = 0; i < playerScores.length; i += groupSize) {
-    const groupPlayers = playerScores.slice(i, i + groupSize).map((ps) => ps.player.id);
-    if (groupPlayers.length > 0) {
-      newGroups.push({
-        id: uid(),
-        name: `Group ${newGroups.length + 1}`,
-        playerIds: groupPlayers,
-        teeTime: nextRound.groups[newGroups.length]?.teeTime || "",
-      });
-    }
-  }
-
+  const orderedIds = playerScores.map((ps) => ps.player.id);
+  const newGroups = buildGroupsFromOrderedPlayers(orderedIds, nextRound.groups);
   return { ...nextRound, groups: newGroups.length > 0 ? newGroups : nextRound.groups };
 }
 
@@ -843,7 +851,7 @@ function NumField({ value, onChange, w = "w-14", min, max, step = 1 }: { value: 
 }
 
 // SetupForm Component
-function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDone, currentRoundId = null }) {
+function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDone, currentRoundId = null, allScoresByRound = {} }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [eventName, setEventName] = useState(initialConfig?.eventName || "");
@@ -883,6 +891,38 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
 
   const round = rounds[roundTab];
   const totalPar = totalParOf(round.course);
+
+  const [groupMode, setGroupMode] = useState<"manual"|"random"|"ascending">("manual");
+  // Reset mode when switching round tabs
+  useEffect(() => { setGroupMode("manual"); }, [roundTab]);
+
+  const hasExistingScores = Object.keys(allScoresByRound).some(k => !k.endsWith("_preserved") && Object.keys(allScoresByRound[k] || {}).length > 0);
+
+  function autoAssignGroups(mode: "random"|"ascending") {
+    const eligible = players.filter(p => p.name);
+    let orderedIds: string[];
+    if (mode === "random") {
+      orderedIds = [...eligible.map(p => p.id)].sort(() => Math.random() - 0.5);
+    } else {
+      // ascending by overall points
+      const scored = eligible.map(p => {
+        let total = 0;
+        rounds.forEach(r => {
+          if (r.excludeFromOverall) return;
+          const grp = r.groups.find(g => g.playerIds.includes(p.id));
+          const so = grp ? allScoresByRound[r.id]?.[grp.id] : null;
+          if (so) {
+            const stats = computePlayerRoundStats(r, p, allowStable, so);
+            total += stats.dayTotal;
+          }
+        });
+        return { id: p.id, total };
+      }).sort((a, b) => a.total - b.total);
+      orderedIds = scored.map(s => s.id);
+    }
+    const newGroups = buildGroupsFromOrderedPlayers(orderedIds, round.groups);
+    setRounds(rs => rs.map((r, i) => i === roundTab ? { ...r, groups: newGroups } : r));
+  }
 
   // Determine if current round tab is editable (future rounds only)
   const currentRoundIndex = currentRoundId ? rounds.findIndex((r) => r.id === currentRoundId) : -1;
@@ -1251,6 +1291,28 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       </SectionCard>
 
       <SectionCard title={`Groups — ${round.label}`} right={<button onClick={addGroup} className="text-xs flex items-center gap-1 px-2 py-1 rounded-md" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}><Plus size={14} /> Group</button>}>
+        {/* Group assignment mode */}
+        <div className="flex gap-1 mb-3">
+          {(["manual","random","ascending"] as const).map(m => (
+            <button key={m} onClick={() => setGroupMode(m)}
+              className="flex-1 py-1.5 rounded-lg text-xs font-medium capitalize"
+              style={{ backgroundColor: groupMode === m ? COLORS.green : "white", color: groupMode === m ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}>
+              {m === "ascending" ? "By Score" : m.charAt(0).toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
+        {groupMode !== "manual" && (
+          <button
+            onClick={() => autoAssignGroups(groupMode as "random"|"ascending")}
+            disabled={groupMode === "ascending" && !hasExistingScores}
+            className="w-full py-2 rounded-lg text-sm font-medium mb-3"
+            style={{ backgroundColor: (groupMode === "ascending" && !hasExistingScores) ? COLORS.cream : COLORS.goldPale, color: (groupMode === "ascending" && !hasExistingScores) ? COLORS.charcoal : COLORS.gold, opacity: (groupMode === "ascending" && !hasExistingScores) ? 0.6 : 1 }}
+          >
+            {groupMode === "ascending" && !hasExistingScores
+              ? "By Score — no scores recorded yet"
+              : `↻ Auto-assign (${groupMode === "random" ? "Random" : "By Overall Score"})`}
+          </button>
+        )}
         <div className="flex flex-col gap-2 mb-3">
           {round.groups.map((g) => (
             <div key={g.id} className="flex items-center gap-2">
@@ -1651,12 +1713,60 @@ function JoinScreen({ config, round, onJoin, onEdit, onReset }) {
 }
 
 // End of Day Processing Screen
-function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, currentScores, gameEntriesData, onComplete, onBack }) {
+function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allScoresByRound: propAllScoresByRound = {}, currentScores, gameEntriesData, onComplete, onBack }) {
   const [gameWinners, setGameWinners] = useState({});
-  const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({}); // Track manual group changes
+  const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({});
+  const [groupMode, setGroupMode] = useState<"ascending"|"random"|"manual">("ascending");
+  const [baseGroups, setBaseGroups] = useState<any[] | null>(null);
   const allowance = config.allowance.stableford;
   const gameEntries = gameEntriesData || [];
-  const teams = dayOneRound.bestBallTeams || []; // Use teams from Day 1
+  const teams = dayOneRound.bestBallTeams || [];
+
+  function computeBaseGroups(mode: "ascending"|"random"|"manual"): any[] | null {
+    if (!dayTwoRound) return null;
+    const allPlayers = config.players.filter(p => p.name);
+    if (mode === "ascending") {
+      const ranked = allPlayers.map(p => {
+        let total = 0;
+        config.rounds.filter(r => !r.excludeFromOverall).forEach(r => {
+          const group = getPlayerGroup(r, p.id);
+          let so: any = null;
+          if (r.id === dayOneRound.id) {
+            so = group ? (allScores?.[group.id] || null) : null;
+            if (currentScores?.playerScores) {
+              so = so ? { ...so, playerScores: { ...so.playerScores, ...currentScores.playerScores } } : currentScores;
+            }
+          } else {
+            const preserved = propAllScoresByRound[`${r.id}_preserved`];
+            so = preserved || (group ? propAllScoresByRound[r.id]?.[group.id] : null) || null;
+          }
+          if (so) {
+            const stats = computePlayerRoundStats(r, p, allowance, so);
+            total += r.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
+          }
+        });
+        return { player: p, total };
+      }).sort((a, b) => a.total - b.total);
+      return buildGroupsFromOrderedPlayers(ranked.map(r => r.player.id), dayTwoRound.groups);
+    } else if (mode === "random") {
+      const shuffled = [...allPlayers.map(p => p.id)].sort(() => Math.random() - 0.5);
+      return buildGroupsFromOrderedPlayers(shuffled, dayTwoRound.groups);
+    } else {
+      return dayTwoRound.groups;
+    }
+  }
+
+  useEffect(() => {
+    if (dayTwoRound) {
+      setBaseGroups(computeBaseGroups("ascending"));
+    }
+  }, []);
+
+  function handleModeChange(mode: "ascending"|"random"|"manual") {
+    setGroupMode(mode);
+    setBaseGroups(computeBaseGroups(mode));
+    setManualGroupAssignments({});
+  }
 
   // Get Day 1 leaderboard
   const leaderboard = config.players
@@ -1684,12 +1794,10 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
     let newDay2Round = null;
 
     if (dayTwoRound) {
-      // Reorganize Day 2 groups by score
-      newDay2Round = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
-
-      // Apply manual group assignments if any
+      const groups = baseGroups || dayTwoRound.groups;
+      let finalGroups = groups;
       if (Object.keys(manualGroupAssignments).length > 0) {
-        const updatedGroups = newDay2Round.groups.map((group) => ({
+        const updatedGroups = groups.map((group) => ({
           ...group,
           playerIds: group.playerIds.filter((pid) => !manualGroupAssignments[pid]),
         }));
@@ -1699,8 +1807,9 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
             targetGroup.playerIds.push(playerId);
           }
         });
-        newDay2Round = { ...newDay2Round, groups: updatedGroups };
+        finalGroups = updatedGroups;
       }
+      newDay2Round = { ...dayTwoRound, groups: finalGroups };
     }
 
     onComplete({ gameWinners, dayTwoTeams: teams, dayTwoRound: newDay2Round });
@@ -1926,29 +2035,35 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
         </div>
       )}
 
-      {/* Day 2 Groups (Reorganized) - only if there is a next round */}
+      {/* Next round groups - only if there is a next round */}
       {dayTwoRound && <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
-        <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>{dayTwoRound?.label} Groups (by {dayOneRound.label} Score)</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium" style={{ color: COLORS.green }}>{dayTwoRound?.label} Groups</h3>
+          <div className="flex gap-1">
+            {(["ascending","random","manual"] as const).map(m => (
+              <button key={m} onClick={() => handleModeChange(m)}
+                className="px-2 py-1 rounded text-xs font-medium"
+                style={{ backgroundColor: groupMode === m ? COLORS.green : COLORS.cream, color: groupMode === m ? "white" : COLORS.charcoal, border: `1px solid ${groupMode === m ? COLORS.green : COLORS.line}` }}>
+                {m === "ascending" ? "By Score" : m.charAt(0).toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="space-y-3">
-          {(() => {
-            const groupSize = dayOneRound.groups[0]?.playerIds.length || 4;
-            const sorted = [...leaderboard].reverse(); // Reverse to get best scores in last group
-            const groups = [];
-            for (let i = 0; i < sorted.length; i += groupSize) {
-              groups.push(sorted.slice(i, i + groupSize));
-            }
-            return groups.map((group, idx) => (
-              <div key={idx} className="p-2 rounded" style={{ backgroundColor: COLORS.greenPale }}>
-                <p className="text-xs font-medium mb-1" style={{ color: COLORS.green }}>Group {idx + 1}</p>
-                {group.map((entry) => (
-                  <p key={entry.player.id} className="text-sm flex justify-between">
-                    <span>{entry.player.name}</span>
-                    <span style={{ color: COLORS.gold, fontWeight: "500" }}>{entry.raw} pts</span>
+          {(baseGroups || []).map((group, idx) => (
+            <div key={group.id || idx} className="p-2 rounded" style={{ backgroundColor: COLORS.greenPale }}>
+              <p className="text-xs font-medium mb-1" style={{ color: COLORS.green }}>{group.name || `Group ${idx + 1}`}</p>
+              {group.playerIds.map((pid) => {
+                const entry = leaderboard.find(e => e.player.id === pid);
+                return (
+                  <p key={pid} className="text-sm flex justify-between">
+                    <span>{entry?.player.name || config.players.find(p => p.id === pid)?.name || pid}</span>
+                    <span style={{ color: COLORS.gold, fontWeight: "500" }}>{entry?.raw ?? "—"} pts</span>
                   </p>
-                ))}
-              </div>
-            ));
-          })()}
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>}
 
@@ -1956,21 +2071,21 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
       {dayTwoRound && <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
         <div className="bg-white p-4" style={{ backgroundColor: COLORS.goldPale }}>
           <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 {dayTwoRound?.label} Group Assignments</h3>
-          <p className="text-xs opacity-60 mt-1">Auto-sorted by {dayOneRound.label} results · Manual Change column to reassign if needed</p>
+          <p className="text-xs opacity-60 mt-1">Override individual assignments if needed</p>
         </div>
         <div className="bg-white p-4">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: COLORS.line }}>
             <span className="flex-1 text-xs font-medium opacity-60">Player</span>
             <span className="w-24 text-xs font-medium opacity-60">Assigned Group</span>
-            <span className="w-32 text-xs font-medium opacity-60">Manual Change</span>
+            <span className="w-32 text-xs font-medium opacity-60">Override</span>
           </div>
           <div className="space-y-2">
-            {config.players.map((player) => {
-              const autoSortedRound = reorganizeGroupsByScore(dayOneRound, dayTwoRound, config.players, allScores || {}, allowance);
+            {config.players.filter(p => p.name).map((player) => {
+              const groups = baseGroups || dayTwoRound.groups;
               const assignedGroupId = manualGroupAssignments[player.id];
-              const autoGroupId = autoSortedRound.groups.find((g) => g.playerIds.includes(player.id))?.id;
+              const autoGroupId = groups.find((g) => g.playerIds.includes(player.id))?.id;
               const currentGroupId = assignedGroupId || autoGroupId;
-              const currentGroup = dayTwoRound.groups.find((g) => g.id === currentGroupId);
+              const currentGroup = groups.find((g) => g.id === currentGroupId);
               return (
                 <div key={player.id} className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: COLORS.cream }}>
                   <span className="flex-1 text-sm font-medium" style={{ color: COLORS.charcoal }}>{player.name}</span>
@@ -1982,7 +2097,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
                     style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
                   >
                     <option value="">Select group...</option>
-                    {dayTwoRound.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
               );
@@ -3668,6 +3783,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
         dayOneRound={currentRound}
         dayTwoRound={nextRound}
         allScores={allScoresByRound[activeRoundId] || {}}
+        allScoresByRound={allScoresByRound}
         currentScores={scores}
         gameEntriesData={gameEntries}
         onComplete={handleEndOfDayComplete}
@@ -3698,7 +3814,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     return (
       <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
         {fontStyle}
-        <SetupForm initialConfig={config} onSave={handleSetupSave} isAdmin={effectiveIsAdmin} onAdminDone={onAdminDone} />
+        <SetupForm initialConfig={config} onSave={handleSetupSave} isAdmin={effectiveIsAdmin} onAdminDone={onAdminDone} allScoresByRound={allScoresByRound} />
         <div className="max-w-md mx-auto px-4 pb-4 flex gap-2">
           {effectiveIsAdmin && onAdminDone && (
             <button
