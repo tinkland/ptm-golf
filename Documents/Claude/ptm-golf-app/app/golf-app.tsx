@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, Plus, Minus, X, Target, RefreshCw, Pencil, Check, Swords, LogOut, BarChart3 } from "lucide-react";
+import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Minus, X, Target, RefreshCw, Pencil, Check, Swords, LogOut, BarChart3 } from "lucide-react";
 import { QRCodeSVG as QRCode } from "qrcode.react";
 import { useAuth } from "./auth-provider";
 import { db } from "@/lib/firebase";
@@ -3340,11 +3340,280 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
   );
 }
 
+// AdminPanel Component — hub for mid-event admin actions
+function AdminPanel({ onGoToSetup, onGoToRounds, onGoToPlayers, onBack }) {
+  const items = [
+    { label: "Edit Event Setup", sub: "Courses, games, allowances, links", icon: Settings, action: onGoToSetup },
+    { label: "Manage Rounds", sub: "Add, delete or reorder rounds", icon: Trophy, action: onGoToRounds },
+    { label: "Manage Players", sub: "Withdraw, replace or add players", icon: Users, action: onGoToPlayers },
+  ];
+  return (
+    <div className="max-w-md mx-auto px-4 py-6" style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-100">
+          <ChevronLeft size={24} style={{ color: COLORS.charcoal }} />
+        </button>
+        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Admin</h2>
+      </div>
+      <div className="flex flex-col gap-3">
+        {items.map(({ label, sub, icon: Icon, action }) => (
+          <button key={label} onClick={action} className="w-full p-4 rounded-xl bg-white border text-left flex items-center gap-3" style={{ borderColor: COLORS.line }}>
+            <Icon size={20} style={{ color: COLORS.green }} />
+            <div className="flex-1">
+              <p className="font-medium text-sm" style={{ color: COLORS.charcoal }}>{label}</p>
+              <p className="text-xs opacity-60">{sub}</p>
+            </div>
+            <ChevronRight size={16} style={{ color: COLORS.charcoal, opacity: 0.4 }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// RoundsAdmin Component — add, delete, reorder rounds mid-event
+function RoundsAdmin({ config, currentRoundId, onSave, onBack }) {
+  const rounds = config.rounds;
+  const currentIdx = rounds.findIndex(r => r.id === currentRoundId);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newLabel, setNewLabel] = useState(`Round ${rounds.length + 1}`);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  function saveRounds(newRounds) {
+    const stillHasCurrent = newRounds.some(r => r.id === currentRoundId);
+    onSave({ ...config, rounds: newRounds, currentRoundId: stillHasCurrent ? currentRoundId : newRounds[0]?.id });
+  }
+
+  function moveRound(idx, dir) {
+    const swap = idx + dir;
+    if (swap < 0 || swap >= rounds.length) return;
+    const nr = [...rounds];
+    [nr[idx], nr[swap]] = [nr[swap], nr[idx]];
+    saveRounds(nr);
+  }
+
+  function deleteRound(id) {
+    saveRounds(rounds.filter(r => r.id !== id));
+    setConfirmId(null);
+  }
+
+  function addRound() {
+    const label = newLabel.trim() || `Round ${rounds.length + 1}`;
+    const nr = { ...defaultRound(rounds.length + 1), id: uid(), label };
+    saveRounds([...rounds, nr]);
+    setShowAdd(false);
+    setNewLabel(`Round ${rounds.length + 2}`);
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-6 pb-24" style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
+      <div className="flex items-center gap-3 mb-2">
+        <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-100">
+          <ChevronLeft size={24} style={{ color: COLORS.charcoal }} />
+        </button>
+        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Manage Rounds</h2>
+      </div>
+      <p className="text-xs opacity-60 mb-4 ml-1">Completed and active rounds cannot be deleted. Use ↑↓ to reorder any round.</p>
+
+      {confirmId && (
+        <div className="mb-4 p-4 rounded-xl border bg-white" style={{ borderColor: COLORS.flag }}>
+          <p className="text-sm font-medium mb-3" style={{ color: COLORS.charcoal }}>
+            Delete &ldquo;{rounds.find(r => r.id === confirmId)?.label}&rdquo;? This cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => deleteRound(confirmId)} className="flex-1 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: COLORS.flag }}>Delete</button>
+            <button onClick={() => setConfirmId(null)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2 mb-4">
+        {rounds.map((r, idx) => {
+          const isPast = idx < currentIdx;
+          const isCurrent = idx === currentIdx;
+          const isFuture = idx > currentIdx;
+          const canDelete = isFuture;
+          return (
+            <div key={r.id} className="p-3 rounded-xl bg-white border flex items-center gap-2" style={{ borderColor: isCurrent ? COLORS.green : COLORS.line }}>
+              <div className="flex flex-col">
+                <button onClick={() => moveRound(idx, -1)} disabled={idx === 0} className="p-0.5 rounded disabled:opacity-20 hover:bg-gray-100">
+                  <ChevronUp size={15} style={{ color: COLORS.charcoal }} />
+                </button>
+                <button onClick={() => moveRound(idx, 1)} disabled={idx === rounds.length - 1} className="p-0.5 rounded disabled:opacity-20 hover:bg-gray-100">
+                  <ChevronDown size={15} style={{ color: COLORS.charcoal }} />
+                </button>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate" style={{ color: COLORS.charcoal }}>{r.label}</p>
+                <p className="text-xs" style={{ color: isPast ? COLORS.charcoal : isCurrent ? COLORS.green : COLORS.gold, opacity: isPast ? 0.5 : 1 }}>
+                  {isPast ? "Completed" : isCurrent ? "Active" : "Upcoming"}{r.course?.name ? ` · ${r.course.name}` : ""}
+                </p>
+              </div>
+              {canDelete ? (
+                <button onClick={() => setConfirmId(r.id)} className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: COLORS.flagPale }}>
+                  <X size={15} style={{ color: COLORS.flag }} />
+                </button>
+              ) : (
+                <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 opacity-20">
+                  <X size={15} style={{ color: COLORS.charcoal }} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {showAdd ? (
+        <div className="p-4 rounded-xl bg-white border mb-4" style={{ borderColor: COLORS.line }}>
+          <p className="text-sm font-medium mb-2" style={{ color: COLORS.charcoal }}>New Round Name</p>
+          <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="e.g. Round 3" className="w-full px-3 py-2 rounded-lg text-sm mb-2" style={{ border: `1px solid ${COLORS.line}` }} />
+          <p className="text-xs opacity-60 mb-3">Configure course, groups and games via Edit Event Setup after adding.</p>
+          <div className="flex gap-2">
+            <button onClick={addRound} className="flex-1 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: COLORS.green }}>Add Round</button>
+            <button onClick={() => setShowAdd(false)} className="flex-1 py-2 rounded-lg text-sm font-medium" style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowAdd(true)} className="w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}>
+          <Plus size={16} /> Add Round
+        </button>
+      )}
+    </div>
+  );
+}
+
+// PlayersAdmin Component — withdraw, replace, or add players mid-event
+function PlayersAdmin({ config, currentRoundId, onSave, onBack }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editHcp, setEditHcp] = useState("");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addHcp, setAddHcp] = useState("");
+
+  const currentRound = config.rounds.find(r => r.id === currentRoundId) || config.rounds[0];
+
+  function startEdit(p) {
+    setEditingId(p.id);
+    setEditName(p.name);
+    setEditHcp(p.handicap != null ? String(p.handicap) : "");
+    setConfirmId(null);
+  }
+
+  function saveEdit(playerId) {
+    const hcp = parseFloat(editHcp);
+    const updatedPlayers = config.players.map(p =>
+      p.id === playerId ? { ...p, name: editName.trim(), handicap: isNaN(hcp) ? p.handicap : hcp } : p
+    );
+    onSave({ ...config, players: updatedPlayers });
+    setEditingId(null);
+  }
+
+  function removePlayer(playerId) {
+    const updatedPlayers = config.players.filter(p => p.id !== playerId);
+    const updatedRounds = config.rounds.map(r => ({
+      ...r,
+      groups: r.groups.map(g => ({ ...g, playerIds: g.playerIds.filter(pid => pid !== playerId) })),
+    }));
+    onSave({ ...config, players: updatedPlayers, rounds: updatedRounds });
+    setConfirmId(null);
+  }
+
+  function addPlayer() {
+    if (!addName.trim()) return;
+    const hcp = parseFloat(addHcp);
+    const newPlayer = { id: uid(), name: addName.trim(), handicap: isNaN(hcp) ? 0 : hcp };
+    onSave({ ...config, players: [...config.players, newPlayer] });
+    setAddName(""); setAddHcp(""); setShowAdd(false);
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-6 pb-24" style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
+      <div className="flex items-center gap-3 mb-2">
+        <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-100">
+          <ChevronLeft size={24} style={{ color: COLORS.charcoal }} />
+        </button>
+        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Manage Players</h2>
+      </div>
+      <p className="text-xs opacity-60 mb-4 ml-1">Edit/Replace updates name &amp; handicap — all recorded scores are kept. Remove clears the player from all groups.</p>
+
+      <div className="flex flex-col gap-2 mb-4">
+        {config.players.filter(p => p.name).map(p => {
+          const group = currentRound ? getPlayerGroup(currentRound, p.id) : null;
+
+          if (editingId === p.id) {
+            return (
+              <div key={p.id} className="p-3 rounded-xl bg-white border" style={{ borderColor: COLORS.gold }}>
+                <div className="flex gap-2 mb-2">
+                  <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" className="flex-1 px-2 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+                  <input value={editHcp} onChange={e => setEditHcp(e.target.value)} placeholder="HCP" type="number" step="0.1" className="w-20 px-2 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => saveEdit(p.id)} className="flex-1 py-1.5 rounded text-sm font-medium text-white" style={{ backgroundColor: COLORS.green }}>Save</button>
+                  <button onClick={() => setEditingId(null)} className="flex-1 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>Cancel</button>
+                </div>
+              </div>
+            );
+          }
+
+          if (confirmId === p.id) {
+            return (
+              <div key={p.id} className="p-3 rounded-xl bg-white border" style={{ borderColor: COLORS.flag }}>
+                <p className="text-sm mb-2" style={{ color: COLORS.charcoal }}>Remove <strong>{p.name}</strong> from the event?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => removePlayer(p.id)} className="flex-1 py-1.5 rounded text-sm font-medium text-white" style={{ backgroundColor: COLORS.flag }}>Remove</button>
+                  <button onClick={() => setConfirmId(null)} className="flex-1 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>Cancel</button>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={p.id} className="p-3 rounded-xl bg-white border flex items-center gap-2" style={{ borderColor: COLORS.line }}>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate" style={{ color: COLORS.charcoal }}>{p.name}</p>
+                <p className="text-xs opacity-60">HCP {p.handicap ?? "—"}{group ? ` · ${group.name}` : " · Unassigned"}</p>
+              </div>
+              <button onClick={() => startEdit(p)} className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: COLORS.goldPale }}>
+                <Pencil size={14} style={{ color: COLORS.gold }} />
+              </button>
+              <button onClick={() => { setConfirmId(p.id); setEditingId(null); }} className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: COLORS.flagPale }}>
+                <X size={14} style={{ color: COLORS.flag }} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {showAdd ? (
+        <div className="p-4 rounded-xl bg-white border mb-4" style={{ borderColor: COLORS.line }}>
+          <p className="text-sm font-medium mb-2" style={{ color: COLORS.charcoal }}>Add Player</p>
+          <div className="flex gap-2 mb-3">
+            <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="Name" className="flex-1 px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+            <input value={addHcp} onChange={e => setAddHcp(e.target.value)} placeholder="HCP" type="number" step="0.1" className="w-20 px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+          </div>
+          <p className="text-xs opacity-60 mb-3">Assign to a group via Edit Event Setup → Groups after adding.</p>
+          <div className="flex gap-2">
+            <button onClick={addPlayer} className="flex-1 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: COLORS.green }}>Add</button>
+            <button onClick={() => setShowAdd(false)} className="flex-1 py-2 rounded-lg text-sm" style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowAdd(true)} className="w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}>
+          <Plus size={16} /> Add Player
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Main GolfApp Component
 export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void }) {
   const { logout } = useAuth();
   const loadedScoresRef = useRef<any>(null); // Store loaded scores to avoid state timing issues
   const [screen, setScreen] = useState("loading");
+  const [setupReturnTo, setSetupReturnTo] = useState<string | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
   const [config, setConfig] = useState<any>(null);
   const [groupSelections, setGroupSelections] = useState({});
@@ -3665,6 +3934,14 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     }
   };
 
+  const handleMidEventSave = (updatedConfig: any) => {
+    setConfig(updatedConfig);
+    if (eventId) {
+      try { localStorage.setItem(`event-${eventId}`, JSON.stringify(updatedConfig)); } catch (e) {}
+      saveEventToFirebase(eventId, userId, updatedConfig).catch(e => console.warn("Firebase save failed:", e));
+    }
+  };
+
   const handleReset = async () => {
     // Clear event and logout
     try {
@@ -3792,6 +4069,39 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
     );
   }
 
+  if (screen === "admin-panel") {
+    return (
+      <AdminPanel
+        onGoToSetup={() => { setSetupReturnTo("admin-panel"); setScreen("setup"); }}
+        onGoToRounds={() => setScreen("rounds-admin")}
+        onGoToPlayers={() => setScreen("players-admin")}
+        onBack={() => setScreen("main")}
+      />
+    );
+  }
+
+  if (screen === "rounds-admin") {
+    return (
+      <RoundsAdmin
+        config={config}
+        currentRoundId={activeRoundId}
+        onSave={(updatedConfig) => { handleMidEventSave(updatedConfig); setScreen("admin-panel"); }}
+        onBack={() => setScreen("admin-panel")}
+      />
+    );
+  }
+
+  if (screen === "players-admin") {
+    return (
+      <PlayersAdmin
+        config={config}
+        currentRoundId={activeRoundId}
+        onSave={(updatedConfig) => { handleMidEventSave(updatedConfig); }}
+        onBack={() => setScreen("admin-panel")}
+      />
+    );
+  }
+
   if (screen === "setup") {
     // Regular users can't access setup (event creation)
     if (!effectiveIsAdmin) {
@@ -3811,10 +4121,31 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
       );
     }
 
+    const midEventSave = (newConfig: any) => {
+      const configWithIds = {
+        ...newConfig,
+        adminUserId: config?.adminUserId,
+        rounds: newConfig.rounds.map((r: any) => ({
+          ...r,
+          games: (r.games || []).map((g: any) => ({ ...g, id: g.id || uid() })),
+        })),
+      };
+      handleMidEventSave(configWithIds);
+      setSetupReturnTo(null);
+      setScreen("admin-panel");
+    };
+
     return (
       <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
         {fontStyle}
-        <SetupForm initialConfig={config} onSave={handleSetupSave} isAdmin={effectiveIsAdmin} onAdminDone={onAdminDone} allScoresByRound={allScoresByRound} />
+        <SetupForm
+          initialConfig={config}
+          onSave={setupReturnTo ? midEventSave : handleSetupSave}
+          onCancel={setupReturnTo ? () => { setSetupReturnTo(null); setScreen("admin-panel"); } : null}
+          isAdmin={effectiveIsAdmin}
+          onAdminDone={onAdminDone}
+          allScoresByRound={allScoresByRound}
+        />
         <div className="max-w-md mx-auto px-4 pb-4 flex gap-2">
           {effectiveIsAdmin && onAdminDone && (
             <button
@@ -3885,7 +4216,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
         </div>
         <div className="flex gap-2">
           {effectiveIsAdmin && (
-            <button onClick={() => setScreen("setup")} aria-label="Settings">
+            <button onClick={() => setScreen("admin-panel")} aria-label="Admin">
               <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
             </button>
           )}
