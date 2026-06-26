@@ -636,7 +636,7 @@ function defaultRound(idx) {
   return {
     id: `round${idx}`,
     label: `Round ${idx}`,
-    course: { name: "", slope: 113, rating: "", holes: defaultHoles() },
+    course: { name: "", slope: 113, rating: 70, holes: defaultHoles() },
     jokerEnabled: idx === 2,
     jokerBonusAppliesOverall: true,
     excludeFromOverall: false,
@@ -1265,7 +1265,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
             </label>
             <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
               Course rating
-              <NumField w="w-full" value={round.course.rating} onChange={(v) => updateCourse("rating", v === "" ? "" : Number(v))} />
+              <NumField w="w-full" value={round.course.rating} onChange={(v) => updateCourse("rating", v === "" ? 70 : Number(v))} min={60} max={80} step={0.1} />
             </label>
           </div>
         </div>
