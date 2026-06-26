@@ -627,14 +627,15 @@ function defaultHoles() {
 function defaultRound(idx) {
   return {
     id: `round${idx}`,
-    label: `Day ${idx}`,
+    label: `Round ${idx}`,
     course: { name: "", slope: 113, rating: "", holes: defaultHoles() },
     jokerEnabled: idx === 2,
-    jokerBonusAppliesOverall: true, // Default: joker bonus counts toward overall
+    jokerBonusAppliesOverall: true,
+    excludeFromOverall: false,
     groups: [{ id: uid(), name: "Group 1", playerIds: [], teeTime: "" }],
-    games: [], // Per-round games for this day
-    competitions: [], // Per-round competitions (hardest-six, best-ball-teams)
-    bestBallTeams: [], // Best Ball Teams (persistent across both days)
+    games: [],
+    competitions: [],
+    bestBallTeams: [],
   };
 }
 
@@ -872,7 +873,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       } else {
         newRounds.push({
           ...defaultRound(i + 1),
-          label: `Day ${i + 1}`,
+          label: `Round ${i + 1}`,
         });
       }
     }
@@ -1204,6 +1205,18 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       <SectionCard title="Course">
         <div className="flex flex-col gap-2">
           <input placeholder="Round label" value={round.label} onChange={(e) => updateRound("label", e.target.value)} className="rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+          <label className="flex items-center gap-2 px-1 py-1">
+            <input
+              type="checkbox"
+              checked={!round.excludeFromOverall}
+              onChange={(e) => updateRound("excludeFromOverall", !e.target.checked)}
+              style={{ accentColor: COLORS.green }}
+            />
+            <span className="text-sm" style={{ color: COLORS.charcoal }}>Include in Overall scores & competitions</span>
+          </label>
+          {round.excludeFromOverall && (
+            <p className="text-xs px-1" style={{ color: COLORS.flag }}>⚠️ This round's scores won't count toward Overall — daily games still operate.</p>
+          )}
           <input placeholder="Course name" value={round.course.name} onChange={(e) => updateCourse("name", e.target.value)} className="rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
           <div className="flex gap-3 mt-1">
             <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
@@ -1696,7 +1709,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Day 1 Summary & Day 2 Setup</h2>
+        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>{dayOneRound.label} Summary{dayTwoRound ? ` & ${dayTwoRound.label} Setup` : ""}</h2>
         <button
           onClick={onBack || (() => window.history.back())}
           className="p-2 rounded-lg hover:bg-gray-100"
@@ -1769,7 +1782,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
       {/* Day 1 Leaderboard */}
       <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
         <div className="bg-white p-4" style={{ backgroundColor: COLORS.greenPale }}>
-          <h3 className="font-medium" style={{ color: COLORS.green }}>Day 1 Leaderboard</h3>
+          <h3 className="font-medium" style={{ color: COLORS.green }}>{dayOneRound.label} Leaderboard</h3>
         </div>
         <div className="bg-white divide-y" style={{ borderColor: COLORS.line }}>
           {leaderboard.map((entry, idx) => (
@@ -1866,7 +1879,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
       {teams && teams.length > 0 && (
         <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
           <div className="bg-white p-4" style={{ backgroundColor: COLORS.greenPale }}>
-            <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams - Day 1 Results</h3>
+            <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams - {dayOneRound.label} Results</h3>
           </div>
           <div className="bg-white p-4">
             {(() => {
@@ -1915,7 +1928,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
 
       {/* Day 2 Groups (Reorganized) - only if there is a next round */}
       {dayTwoRound && <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
-        <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>Day 2 Groups (by Day 1 Score)</h3>
+        <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>{dayTwoRound?.label} Groups (by {dayOneRound.label} Score)</h3>
         <div className="space-y-3">
           {(() => {
             const groupSize = dayOneRound.groups[0]?.playerIds.length || 4;
@@ -1942,8 +1955,8 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
       {/* Day 2 Group Assignments - only if there is a next round */}
       {dayTwoRound && <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
         <div className="bg-white p-4" style={{ backgroundColor: COLORS.goldPale }}>
-          <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 Day 2 Group Assignments</h3>
-          <p className="text-xs opacity-60 mt-1">Auto-sorted by Day 1 results · Manual Change column to reassign if needed</p>
+          <h3 className="font-medium" style={{ color: COLORS.gold }}>📋 {dayTwoRound?.label} Group Assignments</h3>
+          <p className="text-xs opacity-60 mt-1">Auto-sorted by {dayOneRound.label} results · Manual Change column to reassign if needed</p>
         </div>
         <div className="bg-white p-4">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: COLORS.line }}>
@@ -1984,7 +1997,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, curre
         className="w-full py-3 rounded-lg font-medium text-sm"
         style={{ backgroundColor: COLORS.green, color: "white" }}
       >
-        {dayTwoRound ? "Complete Day 1 → Start Day 2" : "Complete Tournament"}
+        {dayTwoRound ? `Complete ${dayOneRound.label} → Start ${dayTwoRound.label}` : `Complete Tournament`}
       </button>
     </div>
   );
@@ -2072,6 +2085,13 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
           <ChevronRight size={22} color={COLORS.goldPale} />
         </button>
       </div>
+
+      {/* Excluded-from-overall banner */}
+      {round.excludeFromOverall && (
+        <div className="rounded-lg px-3 py-2 mb-4 text-sm font-medium text-center" style={{ backgroundColor: COLORS.flagPale, border: `1px solid ${COLORS.flag}`, color: COLORS.flag }}>
+          ⚠️ {round.label} scores are not included in the Overall competition
+        </div>
+      )}
 
       {/* Competitions ribbon for this hole */}
       {(() => {
@@ -2740,7 +2760,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
       .map((p) => {
         if (view === "overall") {
           let total = 0, hardestSixTotal = 0, thru = 0;
-          config.rounds.forEach((rnd) => {
+          config.rounds.filter((rnd) => !rnd.excludeFromOverall).forEach((rnd) => {
             let so = null;
 
             // Try to get scores from all groups (allScoresByRound has synced data from Firebase)
@@ -2774,9 +2794,9 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
           let skinsData = null;
           if (competition === "stableford") finalScore = total;
           else if (competition === "hardest-six") finalScore = hardestSixTotal;
-          else if (competition === "best-indexed") finalScore = computePlayerBestIndexedScore(config.rounds, p, allowance, allScoresByRound, currentRoundId, currentScores);
+          else if (competition === "best-indexed") finalScore = computePlayerBestIndexedScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores);
           else if (competition === "skins") {
-            skinsData = computePlayerSkinsScore(config.rounds, p, allowance, allScoresByRound, currentRoundId, currentScores, config.players, true);
+            skinsData = computePlayerSkinsScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores, config.players, true);
             finalScore = skinsData.totalWon;
           }
           return { id: p.id, name: p.name, groupName: "All rounds", pts: finalScore, thru, skinsData };
@@ -2828,8 +2848,8 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
       <h2 className="font-display text-xl mb-3" style={{ color: COLORS.green }}>Leaderboard</h2>
       <div className="flex gap-1 mb-3">
         {config.rounds.map((r) => (
-          <button key={r.id} onClick={() => setView(r.id)} className="flex-1 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: view === r.id ? COLORS.green : "white", color: view === r.id ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}>
-            {r.label}
+          <button key={r.id} onClick={() => setView(r.id)} className="flex-1 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: view === r.id ? (r.excludeFromOverall ? COLORS.flag : COLORS.green) : (r.excludeFromOverall ? COLORS.flagPale : "white"), color: view === r.id ? "white" : (r.excludeFromOverall ? COLORS.flag : COLORS.charcoal), border: `1px solid ${r.excludeFromOverall ? COLORS.flag : COLORS.line}` }}>
+            {r.label}{r.excludeFromOverall ? " *" : ""}
           </button>
         ))}
         <button onClick={() => setView("overall")} className="flex-1 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: view === "overall" ? COLORS.green : "white", color: view === "overall" ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}>
@@ -3061,12 +3081,12 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
             onClick={() => setSelectedRoundId(r.id)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0"
             style={{
-              backgroundColor: selectedRoundId === r.id ? COLORS.green : "white",
-              color: selectedRoundId === r.id ? "white" : COLORS.charcoal,
-              border: `1px solid ${COLORS.line}`,
+              backgroundColor: selectedRoundId === r.id ? (r.excludeFromOverall ? COLORS.flag : COLORS.green) : (r.excludeFromOverall ? COLORS.flagPale : "white"),
+              color: selectedRoundId === r.id ? "white" : (r.excludeFromOverall ? COLORS.flag : COLORS.charcoal),
+              border: `1px solid ${r.excludeFromOverall ? COLORS.flag : COLORS.line}`,
             }}
           >
-            {r.label}
+            {r.label}{r.excludeFromOverall ? " *" : ""}
           </button>
         ))}
       </div>
@@ -3468,7 +3488,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
       setTab("score");
       setShowEndOfDay(false);
       setScreen("join");
-      celebrate(`📍 Day 2 Setup Complete - ${nextRound.label} Ready`);
+      celebrate(`📍 ${nextRound.label} Setup Complete - Ready to Score`);
     } else {
       // Final round — save game winners and wrap up
       const updatedConfig = {
