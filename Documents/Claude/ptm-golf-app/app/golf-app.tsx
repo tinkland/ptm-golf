@@ -43,6 +43,15 @@ const COMPETITIONS = [
 const DEFAULT_LOGO = "⛳";
 const ADMIN_PASSWORD = "adminptm";
 
+const TEE_COLOURS = [
+  { id: "white",  label: "White",  hex: "#F0EFE9", textHex: "#2A2622" },
+  { id: "yellow", label: "Yellow", hex: "#D4A017", textHex: "#2A2622" },
+  { id: "red",    label: "Red",    hex: "#C0392B", textHex: "#FFFFFF" },
+  { id: "blue",   label: "Blue",   hex: "#2980B9", textHex: "#FFFFFF" },
+  { id: "black",  label: "Black",  hex: "#1A1A1A", textHex: "#FFFFFF" },
+  { id: "gold",   label: "Gold",   hex: "#C7972F", textHex: "#FFFFFF" },
+];
+
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 // Utility functions
@@ -85,6 +94,16 @@ function getPH(course, player, allowancePct) {
   const rating = course.rating !== "" && course.rating != null ? Number(course.rating) : totalPar;
   const ch = courseHandicap(player.handicapIndex, course.slope, rating, totalPar);
   return playingHandicap(ch, allowancePct);
+}
+
+// Returns a course-shaped object using the player's assigned tee for this round,
+// falling back to the primary (course-level) data if no tee assigned.
+function getCourseForPlayer(round, playerId) {
+  const teeId = round.playerTees?.[playerId];
+  if (!teeId) return round.course;
+  const tee = round.course.tees?.find((t) => t.id === teeId);
+  if (!tee) return round.course;
+  return { ...round.course, slope: tee.slope, rating: tee.rating, holes: tee.holes };
 }
 
 function getPlayerGroup(round, playerId) {
@@ -130,10 +149,11 @@ function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allow
 }
 
 function computePlayerRoundStats(round, player, allowancePct, scoreObj) {
-  const ph = getPH(round.course, player, allowancePct);
+  const course = getCourseForPlayer(round, player.id);
+  const ph = getPH(course, player, allowancePct);
   const jokerHole = scoreObj?.jokerHoles?.[player.id];
   let raw = 0, gross = 0, thru = 0, jokerBonus = 0;
-  round.course.holes.forEach((h) => {
+  course.holes.forEach((h) => {
     const g = scoreObj?.playerScores?.[player.id]?.[h.number];
     if (g !== "" && g != null) {
       const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
@@ -944,6 +964,56 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       )
     );
   }
+  function addExtraTee() {
+    setRounds((rs) => rs.map((r, i) => {
+      if (i !== roundTab) return r;
+      const existing = r.course.tees || [];
+      if (existing.length >= 2) return r;
+      const newTee = {
+        id: uid(),
+        label: ["Red", "Blue", "Yellow", "Black", "Gold"].filter(l => !existing.some(t => t.label === l))[0] || "Extra",
+        colour: ["red", "blue", "yellow", "black", "gold"].filter(c => !existing.some(t => t.colour === c))[0] || "red",
+        slope: r.course.slope,
+        rating: r.course.rating,
+        holes: r.course.holes.map(h => ({ ...h })),
+      };
+      return { ...r, course: { ...r.course, tees: [...existing, newTee] } };
+    }));
+  }
+  function removeExtraTee(teeId) {
+    setRounds((rs) => rs.map((r, i) => {
+      if (i !== roundTab) return r;
+      const tees = (r.course.tees || []).filter(t => t.id !== teeId);
+      // Also clear any playerTees assignments for this tee
+      const playerTees = { ...(r.playerTees || {}) };
+      Object.keys(playerTees).forEach(pid => { if (playerTees[pid] === teeId) delete playerTees[pid]; });
+      return { ...r, course: { ...r.course, tees }, playerTees };
+    }));
+  }
+  function updateExtraTee(teeId, field, val) {
+    setRounds((rs) => rs.map((r, i) => {
+      if (i !== roundTab) return r;
+      return { ...r, course: { ...r.course, tees: (r.course.tees || []).map(t => t.id === teeId ? { ...t, [field]: val } : t) } };
+    }));
+  }
+  function updateExtraTeeHole(teeId, holeIdx, field, val) {
+    setRounds((rs) => rs.map((r, i) => {
+      if (i !== roundTab) return r;
+      return { ...r, course: { ...r.course, tees: (r.course.tees || []).map(t =>
+        t.id === teeId
+          ? { ...t, holes: t.holes.map((h, hi) => hi === holeIdx ? { ...h, [field]: val === "" ? "" : Number(val) } : h) }
+          : t
+      ) } };
+    }));
+  }
+  function setPlayerTee(playerId, teeId) {
+    setRounds((rs) => rs.map((r, i) => {
+      if (i !== roundTab) return r;
+      const playerTees = { ...(r.playerTees || {}) };
+      if (teeId) playerTees[playerId] = teeId; else delete playerTees[playerId];
+      return { ...r, playerTees };
+    }));
+  }
   function addPlayer() {
     setPlayers((p) => [...p, { id: uid(), name: "", handicapIndex: "" }]);
   }
@@ -1258,37 +1328,136 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
             <p className="text-xs px-1" style={{ color: COLORS.flag }}>⚠️ This round's scores won't count toward Overall — daily games still operate.</p>
           )}
           <input placeholder="Course name" value={round.course.name} onChange={(e) => updateCourse("name", e.target.value)} className="rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
-          <div className="flex gap-3 mt-1">
-            <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
-              Slope rating
-              <NumField w="w-full" value={round.course.slope} onChange={(v) => updateCourse("slope", Number(v) || 113)} min={55} max={155} />
-            </label>
-            <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
-              Course rating
-              <NumField w="w-full" value={round.course.rating} onChange={(v) => updateCourse("rating", v === "" ? 70 : Number(v))} min={60} max={80} step={0.1} />
-            </label>
-          </div>
         </div>
       </SectionCard>
 
-      <SectionCard title={`Holes (par ${totalPar})`}>
-        <div className="grid gap-1.5">
-          <div className="grid grid-cols-4 gap-1 text-[11px] font-medium px-1" style={{ color: COLORS.charcoal, opacity: 0.6 }}>
-            <span>Hole</span>
-            <span>Par</span>
-            <span>SI</span>
-            <span>Dist</span>
-          </div>
-          {round.course.holes.map((h, i) => (
-            <div key={h.number} className="grid grid-cols-4 gap-1 items-center">
-              <span className="text-sm font-medium" style={{ color: COLORS.green }}>{h.number}</span>
-              <NumField w="w-full" value={h.par} onChange={(v) => updateHole(i, "par", v)} min={3} max={6} />
-              <NumField w="w-full" value={h.si} onChange={(v) => updateHole(i, "si", v)} min={1} max={18} />
-              <NumField w="w-full" value={h.distance} onChange={(v) => updateHole(i, "distance", v)} />
+      {/* Primary tee — slope, rating, holes */}
+      {(() => {
+        const primaryColour = TEE_COLOURS.find(c => c.id === (round.course.primaryTeeColour || "white")) || TEE_COLOURS[0];
+        const primaryLabel = round.course.primaryTeeLabel || "White";
+        return (
+          <SectionCard title={
+            <span className="flex items-center gap-2">
+              <span className="inline-block w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: primaryColour.hex }} />
+              {primaryLabel} Tees (par {totalPar})
+            </span>
+          }>
+            {/* Primary tee label + colour */}
+            <div className="flex gap-2 mb-3">
+              <input
+                placeholder="Tee label (e.g. White)"
+                value={primaryLabel}
+                onChange={(e) => updateCourse("primaryTeeLabel", e.target.value)}
+                className="flex-1 rounded-md px-2 py-1.5 text-sm"
+                style={{ border: `1px solid ${COLORS.line}` }}
+              />
+              <div className="flex gap-1">
+                {TEE_COLOURS.map(c => (
+                  <button key={c.id} title={c.label}
+                    onClick={() => updateCourse("primaryTeeColour", c.id)}
+                    className="w-6 h-6 rounded-full border-2 flex-shrink-0"
+                    style={{ backgroundColor: c.hex, borderColor: (round.course.primaryTeeColour || "white") === c.id ? COLORS.green : "transparent" }}
+                  />
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-      </SectionCard>
+            <div className="flex gap-3 mb-3">
+              <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
+                Slope
+                <NumField w="w-full" value={round.course.slope} onChange={(v) => updateCourse("slope", Number(v) || 113)} min={55} max={155} />
+              </label>
+              <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
+                Course rating
+                <NumField w="w-full" value={round.course.rating} onChange={(v) => updateCourse("rating", v === "" ? 70 : Number(v))} min={60} max={80} step={0.1} />
+              </label>
+            </div>
+            <div className="grid gap-1.5">
+              <div className="grid grid-cols-4 gap-1 text-[11px] font-medium px-1" style={{ color: COLORS.charcoal, opacity: 0.6 }}>
+                <span>Hole</span><span>Par</span><span>SI</span><span>Dist</span>
+              </div>
+              {round.course.holes.map((h, i) => (
+                <div key={h.number} className="grid grid-cols-4 gap-1 items-center">
+                  <span className="text-sm font-medium" style={{ color: COLORS.green }}>{h.number}</span>
+                  <NumField w="w-full" value={h.par} onChange={(v) => updateHole(i, "par", v)} min={3} max={6} />
+                  <NumField w="w-full" value={h.si} onChange={(v) => updateHole(i, "si", v)} min={1} max={18} />
+                  <NumField w="w-full" value={h.distance} onChange={(v) => updateHole(i, "distance", v)} />
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        );
+      })()}
+
+      {/* Additional tees */}
+      {(round.course.tees || []).map((tee) => {
+        const teeColour = TEE_COLOURS.find(c => c.id === tee.colour) || TEE_COLOURS[2];
+        const teePar = tee.holes.reduce((s, h) => s + Number(h.par || 0), 0);
+        return (
+          <SectionCard key={tee.id} title={
+            <span className="flex items-center gap-2">
+              <span className="inline-block w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: teeColour.hex }} />
+              {tee.label} Tees (par {teePar})
+            </span>
+          } right={
+            <button onClick={() => removeExtraTee(tee.id)} className="p-1 rounded" aria-label="Remove tee">
+              <X size={15} style={{ color: COLORS.flag }} />
+            </button>
+          }>
+            <div className="flex gap-2 mb-3">
+              <input
+                placeholder="Tee label"
+                value={tee.label}
+                onChange={(e) => updateExtraTee(tee.id, "label", e.target.value)}
+                className="flex-1 rounded-md px-2 py-1.5 text-sm"
+                style={{ border: `1px solid ${COLORS.line}` }}
+              />
+              <div className="flex gap-1">
+                {TEE_COLOURS.map(c => (
+                  <button key={c.id} title={c.label}
+                    onClick={() => updateExtraTee(tee.id, "colour", c.id)}
+                    className="w-6 h-6 rounded-full border-2 flex-shrink-0"
+                    style={{ backgroundColor: c.hex, borderColor: tee.colour === c.id ? COLORS.green : "transparent" }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 mb-3">
+              <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
+                Slope
+                <NumField w="w-full" value={tee.slope} onChange={(v) => updateExtraTee(tee.id, "slope", Number(v) || 113)} min={55} max={155} />
+              </label>
+              <label className="flex-1 text-xs" style={{ color: COLORS.charcoal }}>
+                Course rating
+                <NumField w="w-full" value={tee.rating} onChange={(v) => updateExtraTee(tee.id, "rating", v === "" ? 70 : Number(v))} min={60} max={80} step={0.1} />
+              </label>
+            </div>
+            <div className="grid gap-1.5">
+              <div className="grid grid-cols-4 gap-1 text-[11px] font-medium px-1" style={{ color: COLORS.charcoal, opacity: 0.6 }}>
+                <span>Hole</span><span>Par</span><span>SI</span><span>Dist</span>
+              </div>
+              {tee.holes.map((h, i) => (
+                <div key={h.number} className="grid grid-cols-4 gap-1 items-center">
+                  <span className="text-sm font-medium" style={{ color: COLORS.green }}>{h.number}</span>
+                  <NumField w="w-full" value={h.par} onChange={(v) => updateExtraTeeHole(tee.id, i, "par", v)} min={3} max={6} />
+                  <NumField w="w-full" value={h.si} onChange={(v) => updateExtraTeeHole(tee.id, i, "si", v)} min={1} max={18} />
+                  <NumField w="w-full" value={h.distance} onChange={(v) => updateExtraTeeHole(tee.id, i, "distance", v)} />
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        );
+      })}
+
+      {/* Add Tee button — only if < 2 additional tees */}
+      {(round.course.tees || []).length < 2 && (
+        <button
+          onClick={addExtraTee}
+          className="w-full py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+          style={{ border: `2px dashed ${COLORS.line}`, color: COLORS.charcoal, backgroundColor: "transparent" }}
+        >
+          <Plus size={16} /> Add Tee Marker
+        </button>
+      )}
 
       <SectionCard title={`Groups — ${round.label}`} right={<button onClick={addGroup} className="text-xs flex items-center gap-1 px-2 py-1 rounded-md" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}><Plus size={14} /> Group</button>}>
         {/* Group assignment mode */}
@@ -1329,17 +1498,41 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         </div>
         <p className="text-xs font-medium mb-1.5" style={{ color: COLORS.charcoal }}>Assign players</p>
         <div className="flex flex-col gap-2">
-          {players.filter((p) => p.name).map((p) => (
-            <div key={p.id} className="flex items-center gap-2">
-              <span className="flex-1 text-sm" style={{ color: COLORS.charcoal }}>{p.name}</span>
-              <select value={round.groups.find((g) => g.playerIds.includes(p.id))?.id || ""} onChange={(e) => setPlayerGroup(p.id, e.target.value)} className="rounded-md px-1 py-1.5 text-xs" style={{ border: `1px solid ${COLORS.line}` }}>
-                <option value="">—</option>
-                {round.groups.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-            </div>
-          ))}
+          {players.filter((p) => p.name).map((p) => {
+            const hasExtraTees = (round.course.tees || []).length > 0;
+            const assignedTeeId = round.playerTees?.[p.id] || "";
+            const assignedTeeColour = assignedTeeId
+              ? TEE_COLOURS.find(c => c.id === (round.course.tees || []).find(t => t.id === assignedTeeId)?.colour)
+              : TEE_COLOURS.find(c => c.id === (round.course.primaryTeeColour || "white"));
+            return (
+              <div key={p.id} className="flex items-center gap-2">
+                {hasExtraTees && (
+                  <span className="inline-block w-3 h-3 rounded-full flex-shrink-0 border border-black/10"
+                    style={{ backgroundColor: assignedTeeColour?.hex || "#F0EFE9" }} />
+                )}
+                <span className="flex-1 text-sm" style={{ color: COLORS.charcoal }}>{p.name}</span>
+                {hasExtraTees && (
+                  <select
+                    value={assignedTeeId}
+                    onChange={(e) => setPlayerTee(p.id, e.target.value)}
+                    className="rounded-md px-1 py-1.5 text-xs"
+                    style={{ border: `1px solid ${COLORS.line}` }}
+                  >
+                    <option value="">{round.course.primaryTeeLabel || "White"}</option>
+                    {(round.course.tees || []).map((t) => (
+                      <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
+                  </select>
+                )}
+                <select value={round.groups.find((g) => g.playerIds.includes(p.id))?.id || ""} onChange={(e) => setPlayerGroup(p.id, e.target.value)} className="rounded-md px-1 py-1.5 text-xs" style={{ border: `1px solid ${COLORS.line}` }}>
+                  <option value="">—</option>
+                  {round.groups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
         </div>
       </SectionCard>
 
@@ -2259,10 +2452,12 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
 
       <div className="flex flex-col gap-2">
         {groupPlayers.map((p) => {
-          const ph = getPH(round.course, p, allowance);
-          const sr = strokesOnHole(ph, holeData.si);
+          const playerCourse = getCourseForPlayer(round, p.id);
+          const playerHoleData = playerCourse.holes.find((h) => h.number === hole) || holeData;
+          const ph = getPH(playerCourse, p, allowance);
+          const sr = strokesOnHole(ph, playerHoleData.si);
           const gross = (scores.playerScores[p.id] || {})[hole];
-          const pts = stablefordPts(gross, holeData.par, sr);
+          const pts = stablefordPts(gross, playerHoleData.par, sr);
           const isJokerHere = round.jokerEnabled && Number(scores.jokerHoles?.[p.id]) === hole;
           const displayPts = isJokerHere && pts != null ? pts * 2 : pts;
           const stats = computePlayerRoundStats(round, p, allowance, scores);
@@ -2286,11 +2481,11 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
                 <span className="text-xs opacity-50">Thru {stats.thru} · {stats.dayTotal} pts</span>
               </div>
               <div className="flex items-center justify-between gap-1">
-                <button onClick={() => setGross(p.id, gross === "PU" ? holeData.par : (gross && gross > 1 ? gross - 1 : 1))} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: COLORS.cream }}>
+                <button onClick={() => setGross(p.id, gross === "PU" ? playerHoleData.par : (gross && gross > 1 ? gross - 1 : 1))} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: COLORS.cream }}>
                   <Minus size={16} style={{ color: COLORS.green }} />
                 </button>
                 <span className="font-display text-2xl w-12 text-center" style={{ color: gross === "PU" ? COLORS.flag : COLORS.green }}>{gross === "PU" ? "PU" : gross === "" || gross == null ? "–" : gross}</span>
-                <button onClick={() => setGross(p.id, gross === "PU" ? holeData.par : (gross ? gross + 1 : holeData.par))} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: COLORS.cream }}>
+                <button onClick={() => setGross(p.id, gross === "PU" ? playerHoleData.par : (gross ? gross + 1 : playerHoleData.par))} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: COLORS.cream }}>
                   <Plus size={16} style={{ color: COLORS.green }} />
                 </button>
                 <span className="text-xs flex-1 text-right" style={{ color: gross === "PU" ? COLORS.flag : displayPts >= 3 ? COLORS.gold : COLORS.charcoal, opacity: displayPts == null && gross !== "PU" ? 0.3 : 1 }}>
@@ -3576,6 +3771,17 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
 
           return (
             <div key={p.id} className="p-3 rounded-xl bg-white border flex items-center gap-2" style={{ borderColor: COLORS.line }}>
+              {(() => {
+                const teeId = currentRound?.playerTees?.[p.id];
+                const tee = teeId ? currentRound.course?.tees?.find(t => t.id === teeId) : null;
+                const teeColourId = tee ? tee.colour : (currentRound?.course?.primaryTeeColour || "white");
+                const teeLabel = tee ? tee.label : (currentRound?.course?.primaryTeeLabel || "White");
+                const colour = TEE_COLOURS.find(c => c.id === teeColourId) || TEE_COLOURS[0];
+                return (
+                  <span title={`${teeLabel} tees`} className="inline-block w-3 h-3 rounded-full flex-shrink-0 border border-black/10"
+                    style={{ backgroundColor: colour.hex }} />
+                );
+              })()}
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate" style={{ color: COLORS.charcoal }}>{p.name}</p>
                 <p className="text-xs opacity-60">HCP {p.handicap ?? "—"}{group ? ` · ${group.name}` : " · Unassigned"}</p>
