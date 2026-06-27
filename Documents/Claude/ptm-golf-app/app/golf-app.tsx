@@ -881,6 +881,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const [adminLogo, setAdminLogo] = useState(() => localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
   const [adminLinks, setAdminLinks] = useState(() => {
     try {
+      if (initialConfig?.links?.length) return initialConfig.links;
       return JSON.parse(localStorage.getItem("ptm-golf-links") || "[]");
     } catch {
       return [];
@@ -1186,6 +1187,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       players,
       matches,
       allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
+      links: adminLinks,
     };
     onSave(config);
   }
@@ -1327,38 +1329,39 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           {round.excludeFromOverall && (
             <p className="text-xs px-1" style={{ color: COLORS.flag }}>⚠️ This round's scores won't count toward Overall — daily games still operate.</p>
           )}
-          <div className="flex gap-2">
-            <input placeholder="Course name" value={round.course.name} onChange={(e) => updateCourse("name", e.target.value)} className="flex-1 rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
-            {rounds.filter((r, i) => i !== roundTab && r.course.name).length > 0 && (
-              <select
-                value=""
-                onChange={(e) => {
-                  const src = rounds.find(r => r.id === e.target.value);
-                  if (!src) return;
-                  setRounds(rs => rs.map((r, i) => i !== roundTab ? r : {
-                    ...r,
-                    course: {
-                      ...r.course,
-                      name: src.course.name,
-                      slope: src.course.slope,
-                      rating: src.course.rating,
-                      holes: src.course.holes.map(h => ({ ...h })),
-                      primaryTeeLabel: src.course.primaryTeeLabel,
-                      primaryTeeColour: src.course.primaryTeeColour,
-                      tees: (src.course.tees || []).map(t => ({ ...t, id: uid(), holes: t.holes.map(h => ({ ...h })) })),
-                    },
-                  }));
-                }}
-                className="rounded-md px-2 py-2 text-xs"
-                style={{ border: `1px solid ${COLORS.line}`, color: COLORS.charcoal }}
-              >
-                <option value="">Copy from…</option>
-                {rounds.filter((r, i) => i !== roundTab && r.course.name).map(r => (
-                  <option key={r.id} value={r.id}>{r.label}: {r.course.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
+          <input placeholder="Course name" value={round.course.name} onChange={(e) => updateCourse("name", e.target.value)} className="w-full rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+          {rounds.filter((r, i) => i !== roundTab && r.course.name).length > 0 && (
+            <select
+              value=""
+              onChange={(e) => {
+                const src = rounds.find(r => r.id === e.target.value);
+                if (!src) return;
+                setRounds(rs => rs.map((r, i) => i !== roundTab ? r : {
+                  ...r,
+                  course: {
+                    ...r.course,
+                    name: src.course.name,
+                    slope: src.course.slope,
+                    rating: src.course.rating,
+                    holes: src.course.holes.map(h => ({ ...h })),
+                    primaryTeeLabel: src.course.primaryTeeLabel,
+                    primaryTeeColour: src.course.primaryTeeColour,
+                    tees: (src.course.tees || []).map(t => ({ ...t, id: uid(), holes: t.holes.map(h => ({ ...h })) })),
+                  },
+                  // Copy group structure (names + tee times) but clear player assignments
+                  groups: src.groups.map(g => ({ ...g, id: uid(), playerIds: [] })),
+                  playerTees: {},
+                }));
+              }}
+              className="w-full rounded-md px-3 py-2 text-sm"
+              style={{ border: `1px solid ${COLORS.line}`, color: COLORS.charcoal }}
+            >
+              <option value="">⬡ Copy course &amp; groups from…</option>
+              {rounds.filter((r, i) => i !== roundTab && r.course.name).map(r => (
+                <option key={r.id} value={r.id}>{r.label}: {r.course.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </SectionCard>
 
@@ -1385,7 +1388,14 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
               <div className="flex gap-1">
                 {TEE_COLOURS.map(c => (
                   <button key={c.id} title={c.label}
-                    onClick={() => updateCourse("primaryTeeColour", c.id)}
+                    onClick={() => {
+                      updateCourse("primaryTeeColour", c.id);
+                      // Auto-update label if it currently matches any colour name or is empty
+                      const currentLabel = round.course.primaryTeeLabel || "";
+                      if (!currentLabel || TEE_COLOURS.some(tc => tc.label === currentLabel)) {
+                        updateCourse("primaryTeeLabel", c.label);
+                      }
+                    }}
                     className="w-6 h-6 rounded-full border-2 flex-shrink-0"
                     style={{ backgroundColor: c.hex, borderColor: (round.course.primaryTeeColour || "white") === c.id ? COLORS.green : "transparent" }}
                   />
@@ -1445,7 +1455,12 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
               <div className="flex gap-1">
                 {TEE_COLOURS.map(c => (
                   <button key={c.id} title={c.label}
-                    onClick={() => updateExtraTee(tee.id, "colour", c.id)}
+                    onClick={() => {
+                      updateExtraTee(tee.id, "colour", c.id);
+                      if (!tee.label || TEE_COLOURS.some(tc => tc.label === tee.label)) {
+                        updateExtraTee(tee.id, "label", c.label);
+                      }
+                    }}
                     className="w-6 h-6 rounded-full border-2 flex-shrink-0"
                     style={{ backgroundColor: c.hex, borderColor: tee.colour === c.id ? COLORS.green : "transparent" }}
                   />
@@ -3565,6 +3580,21 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
       <p className="text-xs mt-4 text-center opacity-60" style={{ color: COLORS.charcoal }}>
         Results by group · Complete data from {selectedRound?.label}
       </p>
+
+      {config.links?.length > 0 && (
+        <div className="mt-6 pt-4 border-t" style={{ borderColor: COLORS.line }}>
+          <p className="text-xs font-medium mb-2 opacity-60" style={{ color: COLORS.charcoal }}>Useful Links</p>
+          <div className="flex flex-col gap-2">
+            {config.links.map((link: any, idx: number) => (
+              <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer"
+                className="text-sm px-3 py-2 rounded-lg text-center"
+                style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}>
+                {link.label} →
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
