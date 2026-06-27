@@ -19,8 +19,6 @@ const COLORS = {
   line: "#D8CFB8",
 };
 
-const ADMIN_PASSWORD = "adminptm";
-
 function WelcomePage({ onLoginClick, onAdminClick, logo, links, eventName }) {
   return (
     <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col max-w-md mx-auto">
@@ -74,54 +72,90 @@ function WelcomePage({ onLoginClick, onAdminClick, logo, links, eventName }) {
   );
 }
 
-function AdminPasswordModal({ onSuccess, onCancel }) {
-  const [password, setPassword] = useState("");
+// License Key Modal — validates key against Firebase via API
+function LicenseKeyModal({ onSuccess, onCancel }) {
+  const [key, setKey] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = () => {
-    if (password === ADMIN_PASSWORD) {
-      onSuccess();
-    } else {
-      setError("Incorrect password");
-      setPassword("");
+  // Check if a valid key is already stored in localStorage
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("ptm-license") || "null");
+      if (stored?.key && stored?.maxSlots) {
+        // Verify it hasn't expired client-side
+        if (!stored.expiresAt || new Date(stored.expiresAt) > new Date()) {
+          onSuccess({ maxSlots: stored.maxSlots, tier: stored.tier });
+        } else {
+          localStorage.removeItem("ptm-license");
+        }
+      }
+    } catch {}
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!key.trim()) return;
+    setError(""); setLoading(true);
+    try {
+      const res = await fetch("/api/validate-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: key.trim().toUpperCase() }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setError(data.error || "Invalid license key");
+        setKey("");
+        return;
+      }
+      localStorage.setItem("ptm-license", JSON.stringify({
+        key: key.trim().toUpperCase(),
+        maxSlots: data.maxSlots,
+        tier: data.tier,
+        expiresAt: data.expiresAt,
+      }));
+      onSuccess({ maxSlots: data.maxSlots, tier: data.tier });
+    } catch {
+      setError("Could not validate key. Check your connection.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 mx-4 w-full max-w-sm">
-        <h2 className="text-lg font-bold mb-4" style={{ color: COLORS.green }}>
-          Admin Access
-        </h2>
+        <h2 className="text-lg font-bold mb-1" style={{ color: COLORS.green }}>Admin Access</h2>
+        <p className="text-xs opacity-60 mb-4" style={{ color: COLORS.charcoal }}>
+          Enter your PTM Golf license key (format: PTM-XXXX-XXXX-XXXX)
+        </p>
         <input
-          type="password"
-          name="adminPassword"
-          placeholder="Enter admin password"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-            setError("");
-          }}
-          onKeyPress={(e) => e.key === "Enter" && handleSubmit()}
-          className="w-full px-3 py-2 rounded-lg border mb-4"
+          type="text"
+          placeholder="PTM-XXXX-XXXX-XXXX"
+          value={key}
+          onChange={(e) => { setKey(e.target.value.toUpperCase()); setError(""); }}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          className="w-full px-3 py-2 rounded-lg border mb-1 font-mono text-sm tracking-wider"
           style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
           autoFocus
+          autoCapitalize="characters"
         />
-        {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
+        <p className="text-[11px] mb-4 opacity-50" style={{ color: COLORS.charcoal }}>
+          Don't have a key?{" "}
+          <a href="/get-key" target="_blank" className="underline" style={{ color: COLORS.green }}>
+            Get one here →
+          </a>
+        </p>
+        {error && <p className="text-xs mb-3" style={{ color: COLORS.flag }}>{error}</p>}
         <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2 rounded-lg font-medium"
-            style={{ backgroundColor: COLORS.cream, color: COLORS.charcoal }}
-          >
+          <button onClick={onCancel} className="flex-1 py-2 rounded-lg font-medium"
+            style={{ backgroundColor: COLORS.cream, color: COLORS.charcoal }}>
             Cancel
           </button>
-          <button
-            onClick={handleSubmit}
+          <button onClick={handleSubmit} disabled={loading}
             className="flex-1 py-2 rounded-lg font-medium"
-            style={{ backgroundColor: COLORS.green, color: "white" }}
-          >
-            Enter
+            style={{ backgroundColor: COLORS.green, color: "white", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Checking…" : "Enter"}
           </button>
         </div>
       </div>
@@ -129,7 +163,7 @@ function AdminPasswordModal({ onSuccess, onCancel }) {
   );
 }
 
-function PostLoginHome({ eventName, onAdminSetup, onJoinEvent, onSignOut }) {
+function PostLoginHome({ eventName, onAdminSetup, onSignOut }) {
   return (
     <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col max-w-md mx-auto">
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
@@ -145,23 +179,13 @@ function PostLoginHome({ eventName, onAdminSetup, onJoinEvent, onSignOut }) {
         )}
 
         <div className="w-full flex flex-col gap-3">
-          {eventName ? (
-            <button
-              onClick={onJoinEvent}
-              className="w-full py-3 rounded-lg font-medium"
-              style={{ backgroundColor: COLORS.green, color: "white" }}
-            >
-              Join Event
-            </button>
-          ) : (
-            <button
-              onClick={onAdminSetup}
-              className="w-full py-3 rounded-lg font-medium"
-              style={{ backgroundColor: COLORS.gold, color: "white" }}
-            >
-              Admin Setup
-            </button>
-          )}
+          <button
+            onClick={onAdminSetup}
+            className="w-full py-3 rounded-lg font-medium"
+            style={{ backgroundColor: COLORS.gold, color: "white" }}
+          >
+            Admin Setup
+          </button>
 
           <button
             onClick={onSignOut}
@@ -182,6 +206,7 @@ export default function Home() {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [showAdminSetup, setShowAdminSetup] = useState(false);
   const [adminModeAfterLogin, setAdminModeAfterLogin] = useState(false);
+  const [adminLimits, setAdminLimits] = useState<{ maxSlots: number; tier: string } | null>(null);
   const [logo, setLogo] = useState(DEFAULT_LOGO);
   const [links, setLinks] = useState<any[]>([]);
   const [eventName, setEventName] = useState<string | null>(null);
@@ -195,20 +220,14 @@ export default function Home() {
     }
   }, []);
 
-  // Save eventId from URL to localStorage immediately (before auth check)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const eventId = params.get("eventId");
-      console.log("EventId from URL:", eventId); // DEBUG
-      if (eventId) {
-        localStorage.setItem("ptm-golf-eventId", eventId);
-        console.log("Saved eventId to localStorage:", eventId); // DEBUG
-      }
+      if (eventId) localStorage.setItem("ptm-golf-eventId", eventId);
     }
   }, []);
 
-  // Load event name whenever URL changes
   useEffect(() => {
     const loadEventName = () => {
       const params = new URLSearchParams(window.location.search);
@@ -223,7 +242,6 @@ export default function Home() {
         setEventName(null);
       }
     };
-
     loadEventName();
     const interval = setInterval(loadEventName, 500);
     return () => clearInterval(interval);
@@ -240,22 +258,19 @@ export default function Home() {
     );
   }
 
-  // Check if there's an eventId (from URL or localStorage)
   const params = new URLSearchParams(window.location.search);
   const urlEventId = params.get("eventId");
   const localEventId = localStorage.getItem("ptm-golf-eventId");
   const hasEventId = urlEventId || localEventId;
 
-  // If there's an eventId but user is not logged in, require login first
-  if (!user && hasEventId) {
-    return <AuthUI />;
-  }
+  if (!user && hasEventId) return <AuthUI />;
 
   if (!user) {
     if (showAdminModal) {
       return (
-        <AdminPasswordModal
-          onSuccess={() => {
+        <LicenseKeyModal
+          onSuccess={(limits) => {
+            setAdminLimits(limits);
             setShowAdminModal(false);
             setShowAdminSetup(true);
           }}
@@ -263,12 +278,12 @@ export default function Home() {
         />
       );
     }
-
     if (showAdminSetup) {
       return (
         <GolfApp
           userId="admin"
           isAdmin={true}
+          adminLimits={adminLimits}
           onAdminDone={() => {
             setShowAdminSetup(false);
             setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
@@ -277,11 +292,7 @@ export default function Home() {
         />
       );
     }
-
-    if (showLogin) {
-      return <AuthUI />;
-    }
-
+    if (showLogin) return <AuthUI />;
     return (
       <WelcomePage
         onLoginClick={() => setShowLogin(true)}
@@ -293,11 +304,12 @@ export default function Home() {
     );
   }
 
-  // User is authenticated
+  // Authenticated user
   if (showAdminModal) {
     return (
-      <AdminPasswordModal
-        onSuccess={() => {
+      <LicenseKeyModal
+        onSuccess={(limits) => {
+          setAdminLimits(limits);
           setShowAdminModal(false);
           setAdminModeAfterLogin(true);
         }}
@@ -306,33 +318,20 @@ export default function Home() {
     );
   }
 
-  // Check if user has an event to join (eventId in URL or saved in localStorage) - CHECK FIRST
   let eventId = urlEventId || localEventId;
+  if (urlEventId) localStorage.setItem("ptm-golf-eventId", urlEventId);
 
-  // If eventId in URL, save it to localStorage
-  if (urlEventId) {
-    localStorage.setItem("ptm-golf-eventId", urlEventId);
-    console.log("EventId from URL:", urlEventId); // DEBUG
-  } else if (localEventId) {
-    console.log("EventId from localStorage:", localEventId); // DEBUG
-  }
-
-  // Check if this user is the admin of the event (by matching userId)
   let isEventAdmin = false;
   if (eventId && !adminModeAfterLogin) {
     try {
       const eventData = localStorage.getItem(`event-${eventId}`);
       if (eventData) {
         const config = JSON.parse(eventData);
-        // If the event has an adminUserId stored AND it matches the current user, they're the admin
         isEventAdmin = config.adminUserId && config.adminUserId === user.uid;
       }
-    } catch (err) {
-      console.warn("Could not check admin status:", err);
-    }
+    } catch {}
   }
 
-  // Only auto-route to scorer if eventId came from URL or localStorage (not admin creating event)
   if (eventId && !adminModeAfterLogin) {
     return <GolfApp userId={user.uid} isAdmin={isEventAdmin} />;
   }
@@ -342,6 +341,7 @@ export default function Home() {
       <GolfApp
         userId={user.uid}
         isAdmin={true}
+        adminLimits={adminLimits}
         onAdminDone={() => {
           setAdminModeAfterLogin(false);
           setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
@@ -355,13 +355,7 @@ export default function Home() {
     <PostLoginHome
       eventName={eventName}
       onAdminSetup={() => setShowAdminModal(true)}
-      onJoinEvent={() => {
-        // This button only shows if eventName is set, which means eventId exists
-        // User clicks it to join, so we show GolfApp
-      }}
-      onSignOut={async () => {
-        await logout();
-      }}
+      onSignOut={async () => { await logout(); }}
     />
   );
 }

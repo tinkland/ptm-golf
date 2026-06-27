@@ -41,7 +41,6 @@ const COMPETITIONS = [
 ];
 
 const DEFAULT_LOGO = "⛳";
-const ADMIN_PASSWORD = "adminptm";
 
 const TEE_COLOURS = [
   { id: "white",  label: "White",  hex: "#F0EFE9", textHex: "#2A2622" },
@@ -788,54 +787,76 @@ function WelcomePage({ onLoginClick, onSetupClick, logo, links }) {
   );
 }
 
-// Admin Password Modal
-function AdminPasswordModal({ onSuccess, onCancel }) {
-  const [password, setPassword] = useState("");
+// License Key Modal — replaces the old admin password modal
+function LicenseKeyModal({ onSuccess, onCancel }) {
+  const [key, setKey] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = () => {
-    if (password === ADMIN_PASSWORD) {
-      onSuccess();
-    } else {
-      setError("Incorrect password");
-      setPassword("");
+  const handleSubmit = async () => {
+    if (!key.trim()) return;
+    setError(""); setLoading(true);
+    try {
+      const res = await fetch("/api/validate-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: key.trim().toUpperCase() }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setError(data.error || "Invalid license key");
+        setKey("");
+        return;
+      }
+      // Persist to localStorage so admin doesn't re-enter after page reload
+      localStorage.setItem("ptm-license", JSON.stringify({
+        key: key.trim().toUpperCase(),
+        maxSlots: data.maxSlots,
+        tier: data.tier,
+        expiresAt: data.expiresAt,
+      }));
+      onSuccess({ maxSlots: data.maxSlots, tier: data.tier });
+    } catch {
+      setError("Could not validate key. Check your connection.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 max-w-md mx-auto">
       <div className="bg-white rounded-xl p-6 mx-4 w-full">
-        <h2 className="text-lg font-bold mb-4" style={{ color: COLORS.green }}>
-          Admin Access
-        </h2>
+        <h2 className="text-lg font-bold mb-1" style={{ color: COLORS.green }}>Admin Access</h2>
+        <p className="text-xs opacity-60 mb-4" style={{ color: COLORS.charcoal }}>
+          Enter your PTM Golf license key (format: PTM-XXXX-XXXX-XXXX)
+        </p>
         <input
-          type="password"
-          placeholder="Enter admin password"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-            setError("");
-          }}
-          onKeyPress={(e) => e.key === "Enter" && handleSubmit()}
-          className="w-full px-3 py-2 rounded-lg border mb-4"
+          type="text"
+          placeholder="PTM-XXXX-XXXX-XXXX"
+          value={key}
+          onChange={(e) => { setKey(e.target.value.toUpperCase()); setError(""); }}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          className="w-full px-3 py-2 rounded-lg border mb-1 font-mono text-sm tracking-wider"
           style={{ borderColor: COLORS.line, color: COLORS.charcoal }}
           autoFocus
+          autoCapitalize="characters"
         />
-        {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
+        <p className="text-[11px] mb-4 opacity-50" style={{ color: COLORS.charcoal }}>
+          Don't have a key?{" "}
+          <a href="/get-key" target="_blank" className="underline" style={{ color: COLORS.green }}>
+            Get one here →
+          </a>
+        </p>
+        {error && <p className="text-xs mb-3" style={{ color: COLORS.flag }}>{error}</p>}
         <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2 rounded-lg font-medium"
-            style={{ backgroundColor: COLORS.cream, color: COLORS.charcoal }}
-          >
+          <button onClick={onCancel} className="flex-1 py-2 rounded-lg font-medium"
+            style={{ backgroundColor: COLORS.cream, color: COLORS.charcoal }}>
             Cancel
           </button>
-          <button
-            onClick={handleSubmit}
+          <button onClick={handleSubmit} disabled={loading}
             className="flex-1 py-2 rounded-lg font-medium"
-            style={{ backgroundColor: COLORS.green, color: "white" }}
-          >
-            Enter
+            style={{ backgroundColor: COLORS.green, color: "white", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Checking…" : "Enter"}
           </button>
         </div>
       </div>
@@ -871,7 +892,7 @@ function NumField({ value, onChange, w = "w-14", min, max, step = 1 }: { value: 
 }
 
 // SetupForm Component
-function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDone, currentRoundId = null, allScoresByRound = {} }) {
+function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDone, currentRoundId = null, allScoresByRound = {}, adminLimits = null }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [eventName, setEventName] = useState(initialConfig?.eventName || "");
@@ -1224,7 +1245,35 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         </SectionCard>
       )}
 
-      <SectionCard title="Players" right={<button onClick={addPlayer} className="text-xs flex items-center gap-1 px-2 py-1 rounded-md" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}><Plus size={14} /> Player</button>}>
+      {adminLimits && (() => {
+        const usedSlots = players.filter(p => p.name).length * rounds.length;
+        const pct = Math.min(100, Math.round((usedSlots / adminLimits.maxSlots) * 100));
+        const atLimit = usedSlots >= adminLimits.maxSlots;
+        return (
+          <div className="rounded-xl p-3 mb-4" style={{ backgroundColor: atLimit ? COLORS.flagPale : COLORS.goldPale, border: `1px solid ${atLimit ? COLORS.flag : COLORS.gold}` }}>
+            <div className="flex justify-between text-xs mb-1.5">
+              <span style={{ color: atLimit ? COLORS.flag : COLORS.charcoal }}>Event slots used</span>
+              <span className="font-bold" style={{ color: atLimit ? COLORS.flag : COLORS.gold }}>{usedSlots} / {adminLimits.maxSlots === 9999 ? "∞" : adminLimits.maxSlots}</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(0,0,0,0.08)" }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: atLimit ? COLORS.flag : COLORS.gold }} />
+            </div>
+            {atLimit && <p className="text-[11px] mt-1.5" style={{ color: COLORS.flag }}>Slot limit reached. Add fewer players or fewer rounds, or upgrade your key at /get-key.</p>}
+          </div>
+        );
+      })()}
+      <SectionCard title="Players" right={(() => {
+        const usedSlots = players.filter(p => p.name).length * rounds.length;
+        const wouldExceed = adminLimits && (usedSlots + rounds.length) > adminLimits.maxSlots;
+        return (
+          <button onClick={wouldExceed ? undefined : addPlayer} disabled={!!wouldExceed}
+            className="text-xs flex items-center gap-1 px-2 py-1 rounded-md"
+            style={{ backgroundColor: wouldExceed ? COLORS.cream : COLORS.greenPale, color: wouldExceed ? COLORS.charcoal : COLORS.green, opacity: wouldExceed ? 0.5 : 1, cursor: wouldExceed ? "not-allowed" : "pointer" }}
+            title={wouldExceed ? `Adding a player would exceed your ${adminLimits!.maxSlots}-slot limit` : "Add player"}>
+            <Plus size={14} /> Player
+          </button>
+        );
+      })()}>
         <div className="flex flex-col gap-2">
           {players.length === 0 && <p className="text-sm opacity-60">No players yet.</p>}
           {players.map((p) => (
@@ -3881,7 +3930,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
 }
 
 // Main GolfApp Component
-export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void }) {
+export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void; adminLimits?: { maxSlots: number; tier: string } | null }) {
   const { logout } = useAuth();
   const loadedScoresRef = useRef<any>(null); // Store loaded scores to avoid state timing issues
   const [screen, setScreen] = useState("loading");
@@ -4417,6 +4466,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone }: { userId: stri
           isAdmin={effectiveIsAdmin}
           onAdminDone={onAdminDone}
           allScoresByRound={allScoresByRound}
+          adminLimits={adminLimits ?? (() => { try { const s = JSON.parse(localStorage.getItem("ptm-license") || "null"); return s?.maxSlots ? s : null; } catch { return null; } })()}
         />
         <div className="max-w-md mx-auto px-4 pb-4 flex gap-2">
           {effectiveIsAdmin && onAdminDone && (
