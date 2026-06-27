@@ -1920,37 +1920,6 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
         </div>
       </div>
 
-      {/* Daily Game Winners - Admin Only */}
-      {(() => {
-        const dailyGames = dayOneRound.games?.filter((g) => ["sandy-saver", "snake", "joker"].includes(g.templateId)) || [];
-        if (dailyGames.length === 0) return null;
-
-        return (
-          <div className="rounded-xl p-4 mb-6 bg-white border" style={{ borderColor: COLORS.line }}>
-            <h3 className="font-medium mb-4" style={{ color: COLORS.green }}>🏆 Daily Game Winners</h3>
-            <div className="space-y-4">
-              {dailyGames.map((game) => (
-                <div key={game.id}>
-                  <label className="text-sm font-medium block mb-2">{game.emoji} {game.name}</label>
-                  <select
-                    value={gameWinners[`daily-${game.templateId}`] || ""}
-                    onChange={(e) => setGameWinners({ ...gameWinners, [`daily-${game.templateId}`]: e.target.value })}
-                    className="w-full text-sm rounded px-3 py-2"
-                    style={{ border: `1px solid ${COLORS.line}` }}
-                  >
-                    <option value="">Select winner...</option>
-                    {leaderboard.map((entry) => (
-                      <option key={entry.player.id} value={entry.player.id}>
-                        {entry.player.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* On-Course Game Winners */}
       {onCourseGames.length > 0 && (
@@ -3260,11 +3229,18 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
           )}
 
           {/* Games & Competitions */}
-          {selectedRound.games && selectedRound.games.length > 0 && (
+          {(selectedRound.games?.length > 0 || selectedRound.bestBallTeams?.length > 0) && (
             <div className="mb-4">
               <h3 className="text-sm font-medium mb-2" style={{ color: COLORS.green }}>Games</h3>
               <div className="flex flex-col gap-2">
-                {selectedRound.games.map((game) => {
+                {/* Best Ball Teams — shown as "game was played" card, results on Board tab */}
+                {selectedRound.bestBallTeams?.length > 0 && (
+                  <div className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
+                    <p className="text-xs font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams</p>
+                    <p className="text-xs mt-1 opacity-60">Teams: {selectedRound.bestBallTeams.map((t: any) => t.name || "Team").join(" · ")}</p>
+                  </div>
+                )}
+                {selectedRound.games?.map((game) => {
                   const savedWinners = selectedRound.gameWinners || {};
 
                   // Per-hole on-course games
