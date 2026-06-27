@@ -1327,7 +1327,38 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           {round.excludeFromOverall && (
             <p className="text-xs px-1" style={{ color: COLORS.flag }}>⚠️ This round's scores won't count toward Overall — daily games still operate.</p>
           )}
-          <input placeholder="Course name" value={round.course.name} onChange={(e) => updateCourse("name", e.target.value)} className="rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+          <div className="flex gap-2">
+            <input placeholder="Course name" value={round.course.name} onChange={(e) => updateCourse("name", e.target.value)} className="flex-1 rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+            {rounds.filter((r, i) => i !== roundTab && r.course.name).length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const src = rounds.find(r => r.id === e.target.value);
+                  if (!src) return;
+                  setRounds(rs => rs.map((r, i) => i !== roundTab ? r : {
+                    ...r,
+                    course: {
+                      ...r.course,
+                      name: src.course.name,
+                      slope: src.course.slope,
+                      rating: src.course.rating,
+                      holes: src.course.holes.map(h => ({ ...h })),
+                      primaryTeeLabel: src.course.primaryTeeLabel,
+                      primaryTeeColour: src.course.primaryTeeColour,
+                      tees: (src.course.tees || []).map(t => ({ ...t, id: uid(), holes: t.holes.map(h => ({ ...h })) })),
+                    },
+                  }));
+                }}
+                className="rounded-md px-2 py-2 text-xs"
+                style={{ border: `1px solid ${COLORS.line}`, color: COLORS.charcoal }}
+              >
+                <option value="">Copy from…</option>
+                {rounds.filter((r, i) => i !== roundTab && r.course.name).map(r => (
+                  <option key={r.id} value={r.id}>{r.label}: {r.course.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
       </SectionCard>
 
