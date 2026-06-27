@@ -3,9 +3,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { generateKey } from '@/lib/key-utils';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function POST(req: NextRequest) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
   try {
     const { secret, recipientName, recipientEmail, note } = await req.json();
 

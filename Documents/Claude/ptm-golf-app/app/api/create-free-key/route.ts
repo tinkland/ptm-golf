@@ -3,9 +3,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { generateKey, getTierForSlots, expiresAt } from '@/lib/key-utils';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function POST(req: NextRequest) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
   try {
     const { name, email, players, rounds } = await req.json();
     const slots = Number(players) * Number(rounds);
