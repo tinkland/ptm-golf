@@ -3943,8 +3943,9 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
   const [scores, setScores] = useState({ playerScores: {}, jokerHoles: {} });
   const [gameEntries, setGameEntries] = useState<any[]>([]);
   const [allScoresByRound, setAllScoresByRound] = useState({});
-  const [finishingRound, setFinishingRound] = useState(false);
+  const [showEndOfRoundGames, setShowEndOfRoundGames] = useState(false);
   const [showEndOfDay, setShowEndOfDay] = useState(false);
+  const isLoadingRoundRef = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
   const [effectiveIsAdmin, setEffectiveIsAdmin] = useState(isAdmin || false);
@@ -4080,19 +4081,14 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
     }
   };
 
+  // Step 1: called from ScoreTab "Finish Round" — loads scores then shows end-of-round games entry
   const handleFinishRound = async () => {
-    if (finishingRound) return; // Prevent double-click
+    if (isLoadingRoundRef.current) return;
+    isLoadingRoundRef.current = true;
 
-    const currentRoundIdx = config.rounds.findIndex((r) => r.id === activeRoundId);
-    const nextRound = config.rounds[currentRoundIdx + 1];
-
-    setFinishingRound(true);
-
-    // Refresh all scores before showing end-of-day processing
+    // Refresh all scores before showing end-of-round games / end-of-day processing
     if (eventId && config) {
       const result = {};
-
-      // Try to load from localStorage first (primary source)
       for (const r of config.rounds) {
         result[r.id] = {};
         for (const g of r.groups) {
@@ -4102,7 +4098,6 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
             if (stored) {
               result[r.id][g.id] = JSON.parse(stored);
             } else {
-              // If not in localStorage, try Firebase
               result[r.id][g.id] = await getScoresFromFirebase(eventId, r.id, g.id);
             }
           } catch (err) {
@@ -4111,8 +4106,6 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
           }
         }
       }
-
-      // Store in ref and localStorage for later use
       loadedScoresRef.current = result;
       try {
         localStorage.setItem(`golf-scores-${eventId}`, JSON.stringify(result));
@@ -4122,13 +4115,19 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
       setAllScoresByRound(result);
     }
 
-    // Show end-of-day processing screen (admin always, scorers only if more rounds)
-    setFinishingRound(false);
+    isLoadingRoundRef.current = false;
+    setShowEndOfRoundGames(true); // Show games entry screen — user clicks Finish there to continue
+  };
+
+  // Step 2: called from EndOfRoundGamesScreen "Finish Round" — routes to next screen
+  const handleEndOfRoundGamesDone = () => {
+    setShowEndOfRoundGames(false);
+    const currentRoundIdx = config.rounds.findIndex((r) => r.id === activeRoundId);
+    const nextRound = config.rounds[currentRoundIdx + 1];
     if (effectiveIsAdmin) {
       setShowEndOfDay(true);
     } else {
       if (nextRound) {
-        // Non-admin scorers wait on leaderboard while admin processes end of day
         setTab("leaderboard");
       } else {
         celebrate("🎉 All rounds complete!");
@@ -4557,14 +4556,14 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
           }}
           onCancel={() => {}}
         />
-      ) : finishingRound ? (
+      ) : showEndOfRoundGames ? (
         <EndOfRoundGamesScreen
           config={config}
           round={activeRound}
           groupId={currentGroupId}
           gameEntries={gameEntries}
           onEntriesChange={onGameEntriesChange}
-          onFinish={handleFinishRound}
+          onFinish={handleEndOfRoundGamesDone}
         />
       ) : (
         <>
