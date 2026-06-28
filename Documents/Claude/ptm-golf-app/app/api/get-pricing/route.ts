@@ -7,13 +7,14 @@ const EURO_COUNTRIES = new Set([
 ]);
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', AUD: 'A$', NZD: 'NZ$', GBP: '£', EUR: '€',
+  USD: '$', AUD: 'A$', NZD: 'NZ$', GBP: '£', EUR: '€', CAD: 'CA$',
 };
 
 function countryToCurrency(country: string): string {
   if (country === 'AU') return 'AUD';
   if (country === 'NZ') return 'NZD';
   if (country === 'GB') return 'GBP';
+  if (country === 'CA') return 'CAD';
   if (EURO_COUNTRIES.has(country)) return 'EUR';
   return 'USD';
 }
