@@ -202,15 +202,11 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
     }
     if (!scoreObj) return;
 
-    const jokerHole = scoreObj.jokerHoles?.[player.id];
-
     course.holes.forEach((h) => {
       const g = scoreObj.playerScores?.[player.id]?.[h.number];
       if (g === "" || g == null) return;
-      let pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
+      const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
       if (pts === null) return;
-      // Apply joker bonus (same as computePlayerRoundStats)
-      if (round.jokerEnabled && jokerHole && Number(jokerHole) === h.number) pts *= 2;
       if (!bestByIndex[h.si] || pts > bestByIndex[h.si]) bestByIndex[h.si] = pts;
     });
   });
