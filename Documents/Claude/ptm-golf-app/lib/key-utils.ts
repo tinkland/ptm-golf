@@ -17,10 +17,11 @@ export interface Tier {
 }
 
 export const TIERS: Tier[] = [
-  { id: 'free',    maxSlots: 8,    price: 0,  label: 'Free',    priceDisplay: 'Free', description: 'Up to 4 players × 2 rounds' },
-  { id: 'starter', maxSlots: 24,   price: 20, label: 'Starter', priceDisplay: '$20',  description: 'Up to 12 players × 2 rounds' },
-  { id: 'mid',     maxSlots: 48,   price: 32, label: 'Pro',     priceDisplay: '$32',  description: 'Up to 16 players × 3 rounds' },
-  { id: 'pro',     maxSlots: 9999, price: 40, label: 'Elite',   priceDisplay: '$40',  description: 'Unlimited players & rounds' },
+  { id: 'free',       maxSlots: 8,    price: 0,  label: 'Free',       priceDisplay: 'Free', description: 'Up to 4 players × 2 rounds' },
+  { id: 'starter',    maxSlots: 16,   price: 16, label: 'Starter',    priceDisplay: '$16',  description: 'Up to 8 players × 2 rounds' },
+  { id: 'competitor', maxSlots: 24,   price: 24, label: 'Competitor', priceDisplay: '$24',  description: 'Up to 12 players × 2 rounds' },
+  { id: 'mid',        maxSlots: 48,   price: 32, label: 'Pro',        priceDisplay: '$32',  description: 'Up to 16 players × 3 rounds' },
+  { id: 'pro',        maxSlots: 9999, price: 40, label: 'Elite',      priceDisplay: '$40',  description: 'Unlimited players & rounds' },
 ];
 
 export const SUPER_TIER: Tier = {
@@ -29,9 +30,10 @@ export const SUPER_TIER: Tier = {
 
 export function getTierForSlots(slots: number): Tier {
   if (slots <= 8)  return TIERS[0];
-  if (slots <= 24) return TIERS[1];
-  if (slots <= 48) return TIERS[2];
-  return TIERS[3];
+  if (slots <= 16) return TIERS[1];
+  if (slots <= 24) return TIERS[2];
+  if (slots <= 48) return TIERS[3];
+  return TIERS[4];
 }
 
 export function expiresAt(): Date {
