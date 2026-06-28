@@ -1,13 +1,19 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { getTierForSlots, TIERS } from '@/lib/key-utils';
+import { useState, useMemo, useEffect } from 'react';
+import { getTierForSlots, TIERS, Tier } from '@/lib/key-utils';
 
 const C = {
   green: '#1F3D2B', greenLight: '#3A6B4A', greenPale: '#E9EFE5',
   cream: '#F6F1E4', charcoal: '#2A2622', gold: '#C7972F',
   goldPale: '#F2E3BC', flag: '#B5432D', flagPale: '#F1DCD3', line: '#D8CFB8',
 };
+
+interface LocalisedTier extends Tier {
+  currency: string;
+  localPrice: number;
+  displayPrice: string;
+}
 
 export default function GetKeyPage() {
   const [players, setPlayers] = useState(8);
@@ -18,9 +24,32 @@ export default function GetKeyPage() {
   const [freeKey, setFreeKey] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  const [localisedTiers, setLocalisedTiers] = useState<LocalisedTier[] | null>(null);
+  const [currency, setCurrency] = useState('USD');
+
+  useEffect(() => {
+    fetch('/api/get-pricing')
+      .then((r) => r.json())
+      .then((data) => {
+        setLocalisedTiers(data.tiers);
+        setCurrency(data.currency);
+      })
+      .catch(() => {/* fall back to USD defaults */});
+  }, []);
+
   const slots = players * rounds;
-  const tier = useMemo(() => getTierForSlots(slots), [slots]);
-  const isFree = tier.price === 0;
+  const baseTier = useMemo(() => getTierForSlots(slots), [slots]);
+
+  // Use localised tier data if available, otherwise fall back to key-utils defaults
+  const displayTiers: LocalisedTier[] = localisedTiers ?? TIERS.map((t) => ({
+    ...t,
+    currency: 'USD',
+    localPrice: t.price,
+    displayPrice: t.priceDisplay,
+  }));
+
+  const currentDisplayTier = displayTiers.find((t) => t.id === baseTier.id) ?? displayTiers[0];
+  const isFree = baseTier.price === 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +70,7 @@ export default function GetKeyPage() {
         const res = await fetch('/api/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, players, rounds }),
+          body: JSON.stringify({ name, email, players, rounds, currency }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to start checkout');
@@ -92,14 +121,18 @@ export default function GetKeyPage() {
 
         {/* Pricing cards */}
         <div className="grid grid-cols-2 gap-2 mb-6">
-          {TIERS.map((t) => (
-            <div key={t.id} className="rounded-xl p-3 text-center"
-              style={{ backgroundColor: tier.id === t.id ? C.goldPale : 'white', border: `1.5px solid ${tier.id === t.id ? C.gold : C.line}` }}>
-              <p className="text-xs font-medium mb-0.5" style={{ color: C.green }}>{t.label}</p>
-              <p className="text-lg font-bold" style={{ color: tier.id === t.id ? C.gold : C.charcoal }}>{t.priceDisplay}</p>
-              <p className="text-[10px] opacity-60 mt-0.5" style={{ color: C.charcoal }}>{t.description}</p>
-            </div>
-          ))}
+          {displayTiers.map((t) => {
+            const active = baseTier.id === t.id;
+            return (
+              <div key={t.id} className="rounded-xl p-3 text-center"
+                style={{ backgroundColor: active ? C.goldPale : 'white', border: `1.5px solid ${active ? C.gold : C.line}` }}>
+                <p className="text-xs font-medium mb-0.5" style={{ color: C.green }}>{t.label}</p>
+                <p className="text-lg font-bold" style={{ color: active ? C.gold : C.charcoal }}>{t.displayPrice}</p>
+                <p className="text-[10px] font-medium mt-0.5" style={{ color: C.charcoal }}>{t.slotsLabel}</p>
+                <p className="text-[10px] opacity-50 mt-0" style={{ color: C.charcoal }}>{t.example}</p>
+              </div>
+            );
+          })}
         </div>
 
         {/* Configurator */}
@@ -136,7 +169,7 @@ export default function GetKeyPage() {
               {players} players × {rounds} round{rounds > 1 ? 's' : ''} = <strong>{slots} slots</strong>
             </p>
             <p className="text-lg font-bold mt-0.5" style={{ color: C.gold }}>
-              {tier.priceDisplay} · {tier.label}
+              {currentDisplayTier.displayPrice} · {baseTier.label}
             </p>
           </div>
         </div>
@@ -156,7 +189,7 @@ export default function GetKeyPage() {
           <button type="submit" disabled={loading}
             className="w-full py-3 rounded-xl font-medium text-white text-sm"
             style={{ backgroundColor: loading ? C.greenLight : C.green, opacity: loading ? 0.7 : 1 }}>
-            {loading ? 'Please wait…' : isFree ? 'Get Free Key' : `Buy for ${tier.priceDisplay} (AUD)`}
+            {loading ? 'Please wait…' : isFree ? 'Get Free Key' : `Buy for ${currentDisplayTier.displayPrice} (${currency})`}
           </button>
           <p className="text-[10px] text-center mt-3 opacity-50" style={{ color: C.charcoal }}>
             {isFree ? 'Key sent instantly to your email.' : 'Secure checkout via Stripe. Key emailed after payment.'}
