@@ -34,7 +34,6 @@ const GAME_TEMPLATES = [
 
 const COMPETITIONS = [
   { id: "stableford", name: "Stableford", emoji: "⭐", description: "Score from all 18 holes" },
-  { id: "hardest-six", name: "Hardest and Highest", emoji: "💪", description: "Scores on individual's most difficult 6 holes by handicap" },
   { id: "best-indexed", name: "Best Indexed Score", emoji: "📊", description: "Best score on each hole index across all days" },
   { id: "best-ball-teams", name: "Best Ball Teams", emoji: "🤝", description: "Randomly paired teams across ALL groups" },
   { id: "skins", name: "Skins Tournament", emoji: "💰", description: "Win a skin by having the best score on each hole. Ties carry over." },
@@ -171,116 +170,52 @@ function hasScore(scores, playerId, holeNum) {
   return v !== "" && v != null;
 }
 
-function getHardestSixHoles(round, handicap: number): number[] {
-  // Hardest 6 holes are those with FEWEST strokes allocated by handicap
-  // For handicaps 1-18: all holes get 1 stroke, hardest 6 are SI 13-18
-  // For handicaps 19-36: SI 1-7 get 2 strokes, SI 8-18 get 1 stroke, hardest 6 are SI 8-13
-  // etc.
-  const quotient = Math.floor(handicap / 18);
-  const remainder = handicap % 18;
-
-  // Find holes with minimum strokes
-  // SI 1-remainder get quotient+1 strokes
-  // SI (remainder+1)-18 get quotient strokes
-  let hardestSIs: number[] = [];
-
-  if (remainder === 0) {
-    // All holes get same number of strokes, hardest 6 are highest SI
-    hardestSIs = [13, 14, 15, 16, 17, 18];
-  } else {
-    // Holes with fewer strokes are harder
-    // SI (remainder+1)-18 get quotient strokes (fewest)
-    const startSI = remainder + 1;
-    const endSI = 18;
-    hardestSIs = [];
-    for (let si = startSI; si <= endSI && hardestSIs.length < 6; si++) {
-      hardestSIs.push(si);
-    }
-    // If not enough, add from SI 1
-    for (let si = 1; si <= remainder && hardestSIs.length < 6; si++) {
-      hardestSIs.push(si);
-    }
-  }
-
-  return round.course.holes
-    .filter((h) => hardestSIs.includes(h.si))
-    .map((h) => h.number)
-    .sort((a, b) => a - b);
-}
-
-function computePlayerHardestSixScore(round, player, allowancePct, scoreObj) {
-  const ph = getPH(round.course, player, allowancePct);
-  const hardestHoles = getHardestSixHoles(round, ph);
-  let score = 0;
-  round.course.holes.forEach((h) => {
-    if (hardestHoles.includes(h.number)) {
-      const g = scoreObj?.playerScores?.[player.id]?.[h.number];
-      if (g !== "" && g != null) {
-        const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
-        score += pts;
-      }
-    }
-  });
-  return score;
-}
 
 function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresByRound, currentRoundId, currentScores) {
-  let totalScore = 0;
+  // bestByIndex[si] = best pts scored on that SI across all rounds (including joker)
+  const bestByIndex: Record<number, number> = {};
 
-  // For each stroke index (1-18)
-  for (let index = 1; index <= 18; index++) {
-    let bestPtsForIndex = 0;
+  rounds.forEach((round) => {
+    if (!round?.course?.holes) return;
 
-    // Check all rounds for holes with this stroke index
-    rounds.forEach((round) => {
-      // Guard: ensure round has course data
-      if (!round || !round.course || !round.course.holes) {
-        return;
-      }
+    // Use per-player tee-adjusted course (same as Stableford)
+    const course = getCourseForPlayer(round, player.id);
+    const ph = getPH(course, player, allowancePct);
 
-      let scoreObj = null;
-
-      // For all rounds, merge all groups from allScoresByRound
-      if (allScoresByRound[round.id]) {
-        const merged = { playerScores: {}, jokerHoles: {} };
-        Object.values(allScoresByRound[round.id]).forEach((groupScores: any) => {
-          if (groupScores?.playerScores) Object.assign(merged.playerScores, groupScores.playerScores);
-          if (groupScores?.jokerHoles) Object.assign(merged.jokerHoles, groupScores.jokerHoles);
-        });
-        scoreObj = merged;
-      }
-
-      // For the current round, overlay currentScores (most recent, not yet synced to Firebase)
-      if (round.id === currentRoundId) {
-        if (scoreObj) {
-          if (currentScores?.playerScores) Object.assign((scoreObj as any).playerScores, currentScores.playerScores);
-          if (currentScores?.jokerHoles) Object.assign((scoreObj as any).jokerHoles, currentScores.jokerHoles);
-        } else {
-          scoreObj = currentScores;
-        }
-      }
-
+    // Build scoreObj: merge all groups, overlay currentScores for active round
+    let scoreObj: any = null;
+    if (allScoresByRound[round.id]) {
+      const merged: any = { playerScores: {}, jokerHoles: {} };
+      Object.values(allScoresByRound[round.id]).forEach((gs: any) => {
+        if (gs?.playerScores) Object.assign(merged.playerScores, gs.playerScores);
+        if (gs?.jokerHoles) Object.assign(merged.jokerHoles, gs.jokerHoles);
+      });
+      scoreObj = merged;
+    }
+    if (round.id === currentRoundId) {
       if (scoreObj) {
-        const ph = getPH(round.course, player, allowancePct);
-        // Find hole with this stroke index in this round
-        const hole = round.course.holes.find((h) => h.si === index);
-        if (hole) {
-          const g = scoreObj?.playerScores?.[player.id]?.[hole.number];
-          if (g !== "" && g != null) {
-            const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
-            // Keep only the best score for this index
-            if (pts !== null) {
-              bestPtsForIndex = Math.max(bestPtsForIndex, pts);
-            }
-          }
-        }
+        if (currentScores?.playerScores) Object.assign(scoreObj.playerScores, currentScores.playerScores);
+        if (currentScores?.jokerHoles) Object.assign(scoreObj.jokerHoles, currentScores.jokerHoles);
+      } else {
+        scoreObj = currentScores;
       }
+    }
+    if (!scoreObj) return;
+
+    const jokerHole = scoreObj.jokerHoles?.[player.id];
+
+    course.holes.forEach((h) => {
+      const g = scoreObj.playerScores?.[player.id]?.[h.number];
+      if (g === "" || g == null) return;
+      let pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
+      if (pts === null) return;
+      // Apply joker bonus (same as computePlayerRoundStats)
+      if (round.jokerEnabled && jokerHole && Number(jokerHole) === h.number) pts *= 2;
+      if (!bestByIndex[h.si] || pts > bestByIndex[h.si]) bestByIndex[h.si] = pts;
     });
+  });
 
-    totalScore += bestPtsForIndex;
-  }
-
-  return totalScore;
+  return Object.values(bestByIndex).reduce((s, v) => s + v, 0);
 }
 
 function calculateRoundSkins(round, players, allowancePct, scoreObj) {
@@ -1714,29 +1649,6 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
             );
           })}
 
-          {/* Hardest & Highest option */}
-          <div className="rounded-lg p-2.5" style={{ backgroundColor: round.games?.some((g) => g.templateId === "hardest-daily") ? COLORS.greenPale : COLORS.cream, border: `1px solid ${round.games?.some((g) => g.templateId === "hardest-daily") ? COLORS.green : COLORS.line}` }}>
-            <button
-              onClick={() => {
-                const hasHardest = round.games?.some((g) => g.templateId === "hardest-daily");
-                const newGames = hasHardest
-                  ? (round.games || []).filter((g) => g.templateId !== "hardest-daily")
-                  : [...(round.games || []), { id: uid(), templateId: "hardest-daily", name: "Hardest & Highest (Daily)", emoji: "🏆", description: "Daily best score on your 6 hardest holes" }];
-                updateRound("games", newGames);
-              }}
-              className="flex items-center gap-2 w-full"
-            >
-              <span className="text-lg">🏆</span>
-              <span className="flex-1 text-left">
-                <span className="text-sm font-medium block" style={{ color: COLORS.charcoal }}>Hardest & Highest (Daily)</span>
-                <span className="text-[11px] opacity-60 block">Best score on 6 hardest holes each day</span>
-              </span>
-              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: round.games?.some((g) => g.templateId === "hardest-daily") ? COLORS.green : "white", border: `1px solid ${COLORS.line}` }}>
-                {round.games?.some((g) => g.templateId === "hardest-daily") && <Check size={14} color="white" />}
-              </div>
-            </button>
-          </div>
-
           {/* Best Ball Teams option */}
           <div className="rounded-lg p-2.5" style={{ backgroundColor: round.games?.some((g) => g.templateId === "bestball-daily") ? COLORS.greenPale : COLORS.cream, border: `1px solid ${round.games?.some((g) => g.templateId === "bestball-daily") ? COLORS.green : COLORS.line}` }}>
             <button
@@ -2398,8 +2310,7 @@ function PickGroupScreen({ config, round, onPick, onCancel }) {
 }
 
 // ScoreTab Component
-function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, gameEntries, onGameEntriesChange, onFinish }) {
-  const [hole, setHole] = useState(1);
+function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, gameEntries, onGameEntriesChange, onFinish, hole, setHole }) {
   const group = round.groups.find((g) => g.id === groupId);
   const groupPlayers = group ? config.players.filter((p) => group.playerIds.includes(p.id)) : [];
   const holeData = round.course.holes.find((h) => h.number === hole);
@@ -3124,7 +3035,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
       .filter((p) => p.name)
       .map((p) => {
         if (view === "overall") {
-          let total = 0, hardestSixTotal = 0, thru = 0;
+          let total = 0, thru = 0;
           config.rounds.filter((rnd) => !rnd.excludeFromOverall).forEach((rnd) => {
             let so = null;
 
@@ -3153,12 +3064,10 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
             const roundTotal = rnd.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
             total += roundTotal;
             thru += stats.thru;
-            hardestSixTotal += computePlayerHardestSixScore(rnd, p, allowance, so);
           });
           let finalScore = total;
           let skinsData = null;
           if (competition === "stableford") finalScore = total;
-          else if (competition === "hardest-six") finalScore = hardestSixTotal;
           else if (competition === "best-indexed") finalScore = computePlayerBestIndexedScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores);
           else if (competition === "skins") {
             skinsData = computePlayerSkinsScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores, config.players, true);
@@ -3188,11 +3097,9 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
           }
         }
         const stats = computePlayerRoundStats(r, p, allowance, so);
-        const hardestSixScore = computePlayerHardestSixScore(r, p, allowance, so);
         let finalScore = stats.dayTotal;
         let skinsData = null;
         if (competition === "stableford") finalScore = stats.dayTotal;
-        else if (competition === "hardest-six") finalScore = hardestSixScore;
         else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, group ? { [r.id]: { [group.id]: so } } : {}, r.id, so) : 0;
         else if (competition === "best-ball-teams") finalScore = stats.dayTotal; // Teams handled separately above
         else if (competition === "skins") {
@@ -3944,6 +3851,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
   const [gameEntries, setGameEntries] = useState<any[]>([]);
   const [allScoresByRound, setAllScoresByRound] = useState({});
   const [showEndOfRoundGames, setShowEndOfRoundGames] = useState(false);
+  const [scoreHole, setScoreHole] = useState(1);
   const [showEndOfDay, setShowEndOfDay] = useState(false);
   const isLoadingRoundRef = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -4597,6 +4505,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
               gameEntries={gameEntries}
               onGameEntriesChange={onGameEntriesChange}
               onFinish={handleFinishRound}
+              hole={scoreHole}
+              setHole={setScoreHole}
             />
           )}
           {tab === "games" && config && (
