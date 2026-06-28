@@ -87,9 +87,15 @@ function totalParOf(course) {
   return course.holes.reduce((s, h) => s + Number(h.par || 0), 0);
 }
 
-function getPH(course, player, allowancePct) {
+function getPH(course, player, allowancePct, handicapSystem = 'whs') {
   const totalPar = totalParOf(course);
   const rating = course.rating !== "" && course.rating != null ? Number(course.rating) : totalPar;
+  if (handicapSystem === 'ga') {
+    const n = Number(player.handicapIndex);
+    if (player.handicapIndex === "" || player.handicapIndex == null || isNaN(n)) return 0;
+    const rawCH = n * (Number(course.slope || 113) / 113) + (rating - totalPar);
+    return Math.floor(rawCH * 0.93);
+  }
   const ch = courseHandicap(player.handicapIndex, course.slope, rating, totalPar);
   return playingHandicap(ch, allowancePct);
 }
@@ -131,12 +137,12 @@ function buildGroupsFromOrderedPlayers(orderedPlayerIds, existingGroups) {
   });
 }
 
-function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allowance) {
+function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allowance, handicapSystem = 'whs') {
   const playerScores = players
     .map((p) => {
       const group = getPlayerGroup(prevRound, p.id);
       const scoreObj = group && allScores[group.id];
-      const stats = computePlayerRoundStats(prevRound, p, allowance, scoreObj);
+      const stats = computePlayerRoundStats(prevRound, p, allowance, scoreObj, handicapSystem);
       return { player: p, score: stats.raw };
     })
     .sort((a, b) => a.score - b.score); // ascending: worst first, leaders in last group
@@ -146,9 +152,9 @@ function reorganizeGroupsByScore(prevRound, nextRound, players, allScores, allow
   return { ...nextRound, groups: newGroups.length > 0 ? newGroups : nextRound.groups };
 }
 
-function computePlayerRoundStats(round, player, allowancePct, scoreObj) {
+function computePlayerRoundStats(round, player, allowancePct, scoreObj, handicapSystem = 'whs') {
   const course = getCourseForPlayer(round, player.id);
-  const ph = getPH(course, player, allowancePct);
+  const ph = getPH(course, player, allowancePct, handicapSystem);
   const jokerHole = scoreObj?.jokerHoles?.[player.id];
   let raw = 0, gross = 0, thru = 0, jokerBonus = 0;
   course.holes.forEach((h) => {
@@ -171,7 +177,7 @@ function hasScore(scores, playerId, holeNum) {
 }
 
 
-function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresByRound, currentRoundId, currentScores) {
+function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresByRound, currentRoundId, currentScores, handicapSystem = 'whs') {
   // bestByIndex[si] = best pts scored on that SI across all rounds (including joker)
   const bestByIndex: Record<number, number> = {};
 
@@ -180,7 +186,7 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
 
     // Use per-player tee-adjusted course (same as Stableford)
     const course = getCourseForPlayer(round, player.id);
-    const ph = getPH(course, player, allowancePct);
+    const ph = getPH(course, player, allowancePct, handicapSystem);
 
     // Build scoreObj: merge all groups, overlay currentScores for active round
     let scoreObj: any = null;
@@ -214,7 +220,7 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
   return Object.values(bestByIndex).reduce((s, v) => s + v, 0);
 }
 
-function calculateRoundSkins(round, players, allowancePct, scoreObj) {
+function calculateRoundSkins(round, players, allowancePct, scoreObj, handicapSystem = 'whs') {
   // Returns { playerSkins: { playerId: { won: number of holes won, awarded: number of times skin awarded } }, carryOver: number }
   const playerSkins = {};
   players.forEach((p) => {
@@ -233,7 +239,7 @@ function calculateRoundSkins(round, players, allowancePct, scoreObj) {
     players.forEach((p) => {
       const g = scoreObj?.playerScores?.[p.id]?.[hole.number];
       if (g !== "" && g != null && g !== "PU") { // Exclude pickups
-        const ph = getPH(round.course, p, allowancePct);
+        const ph = getPH(round.course, p, allowancePct, handicapSystem);
         const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
         scoresOnHole.push({ playerId: p.id, gross: Number(g), pts });
       }
@@ -262,7 +268,7 @@ function calculateRoundSkins(round, players, allowancePct, scoreObj) {
   return { playerSkins, carryOver };
 }
 
-function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRound, currentRoundId, currentScores) {
+function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRound, currentRoundId, currentScores, handicapSystem = 'whs') {
   // Returns { playerId: { totalWon: number, timesAwarded: number } }
   const cumulativeSkins = {};
   players.forEach((p) => {
@@ -326,7 +332,7 @@ function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRoun
     }
 
     // Calculate skins for this round
-    const result = calculateRoundSkins(round, players, allowancePct, roundScores);
+    const result = calculateRoundSkins(round, players, allowancePct, roundScores, handicapSystem);
 
     // Apply carry-over from previous round to first hole with a winner
     let carryOverApplied = false;
@@ -338,7 +344,7 @@ function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRoun
         players.forEach((p) => {
           const g = roundScores?.playerScores?.[p.id]?.[hole.number];
           if (g !== "" && g != null && g !== "PU") {
-            const ph = getPH(round.course, p, allowancePct);
+            const ph = getPH(round.course, p, allowancePct, handicapSystem);
             const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
             if (pts !== null) {
               scoresOnHole.push({ playerId: p.id, pts });
@@ -377,7 +383,7 @@ function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRoun
   return cumulativeSkins;
 }
 
-function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound, currentRoundId, currentScores, allPlayers, isCompetition = true) {
+function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound, currentRoundId, currentScores, allPlayers, isCompetition = true, handicapSystem = 'whs') {
   // Returns { totalWon, timesAwarded } for display as "totalWon(timesAwarded)"
   // isCompetition: true for Skins Tournament (always carry over), false for daily skins games
   const cumulativeSkins = {};
@@ -441,7 +447,7 @@ function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound,
     }
 
     // Calculate skins for this round
-    const result = calculateRoundSkins(round, allPlayers, allowancePct, roundScores);
+    const result = calculateRoundSkins(round, allPlayers, allowancePct, roundScores, handicapSystem);
 
     // Apply carry-over from previous round to first hole with a winner
     let carryOverApplied = false;
@@ -453,7 +459,7 @@ function computePlayerSkinsScore(rounds, player, allowancePct, allScoresByRound,
         allPlayers.forEach((p) => {
           const g = roundScores?.playerScores?.[p.id]?.[hole.number];
           if (g !== "" && g != null && g !== "PU") {
-            const ph = getPH(round.course, p, allowancePct);
+            const ph = getPH(round.course, p, allowancePct, handicapSystem);
             const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
             if (pts !== null) {
               scoresOnHole.push({ playerId: p.id, pts });
@@ -843,6 +849,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const [matches, setMatches] = useState(initialConfig?.matches || []);
   const [allowStable, setAllowStable] = useState(initialConfig?.allowance?.stableford ?? 95);
   const [allowMatch, setAllowMatch] = useState(initialConfig?.allowance?.matchplay ?? 100);
+  const [handicapSystem, setHandicapSystem] = useState<'whs' | 'ga'>(initialConfig?.handicapSystem ?? 'whs');
 
   // Update rounds when numRounds changes
   const handleNumRoundsChange = (num: number) => {
@@ -885,7 +892,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           const grp = r.groups.find(g => g.playerIds.includes(p.id));
           const so = grp ? allScoresByRound[r.id]?.[grp.id] : null;
           if (so) {
-            const stats = computePlayerRoundStats(r, p, allowStable, so);
+            const stats = computePlayerRoundStats(r, p, allowStable, so, handicapSystem);
             total += stats.dayTotal;
           }
         });
@@ -1139,6 +1146,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       players,
       matches,
       allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
+      handicapSystem,
       links: adminLinks,
     };
     onSave(config);
@@ -1176,6 +1184,25 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         </SectionCard>
       )}
 
+      <SectionCard title="Handicap System">
+        <div className="flex gap-2">
+          {([['whs', 'International (WHS)'], ['ga', 'Australian (GA)']] as const).map(([val, label]) => (
+            <button key={val} onClick={() => setHandicapSystem(val)}
+              className="flex-1 py-2 rounded-lg text-sm font-medium border transition-all"
+              style={{
+                backgroundColor: handicapSystem === val ? COLORS.green : 'white',
+                color: handicapSystem === val ? 'white' : COLORS.charcoal,
+                borderColor: handicapSystem === val ? COLORS.green : COLORS.line,
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {handicapSystem === 'ga' && (
+          <p className="text-xs mt-2 opacity-60">Daily HI = floor(rawCH × 93%) — Golf Australia formula</p>
+        )}
+      </SectionCard>
+
       {adminLimits && (() => {
         const usedSlots = players.filter(p => p.name).length * rounds.length;
         const pct = Math.min(100, Math.round((usedSlots / adminLimits.maxSlots) * 100));
@@ -1210,7 +1237,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           {players.map((p) => (
             <div key={p.id} className="flex items-center gap-2">
               <input placeholder="Name" value={p.name} onChange={(e) => updatePlayer(p.id, "name", e.target.value)} className="flex-1 rounded-md px-2 py-1.5 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
-              <input placeholder="GA" value={p.handicapIndex} onChange={(e) => updatePlayer(p.id, "handicapIndex", e.target.value)} className="w-16 rounded-md px-2 py-1.5 text-sm text-center" style={{ border: `1px solid ${COLORS.line}` }} />
+              <input placeholder="HI" value={p.handicapIndex} onChange={(e) => updatePlayer(p.id, "handicapIndex", e.target.value)} className="w-16 rounded-md px-2 py-1.5 text-sm text-center" style={{ border: `1px solid ${COLORS.line}` }} />
               <button onClick={() => removePlayer(p.id)} aria-label="Remove player">
                 <X size={16} style={{ color: COLORS.flag }} />
               </button>
@@ -1937,7 +1964,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
             so = preserved || (group ? propAllScoresByRound[r.id]?.[group.id] : null) || null;
           }
           if (so) {
-            const stats = computePlayerRoundStats(r, p, allowance, so);
+            const stats = computePlayerRoundStats(r, p, allowance, so, config.handicapSystem);
             total += r.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
           }
         });
@@ -1978,7 +2005,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
       } else if (group && currentScores && currentScores.playerScores) {
         scoreObj = currentScores;
       }
-      const stats = computePlayerRoundStats(dayOneRound, p, allowance, scoreObj);
+      const stats = computePlayerRoundStats(dayOneRound, p, allowance, scoreObj, config.handicapSystem);
       return { player: p, ...stats };
     })
     .sort((a, b) => b.raw - a.raw);
@@ -2185,7 +2212,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
                     if (so && player) {
                       const g = so.playerScores?.[playerId]?.[hole.number];
                       if (g !== "" && g != null) {
-                        const ph = getPH(dayOneRound.course, player, allowance);
+                        const ph = getPH(dayOneRound.course, player, allowance, config.handicapSystem);
                         const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
                         if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
                           bestHoleScore = pts;
@@ -2456,13 +2483,13 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
         {groupPlayers.map((p) => {
           const playerCourse = getCourseForPlayer(round, p.id);
           const playerHoleData = playerCourse.holes.find((h) => h.number === hole) || holeData;
-          const ph = getPH(playerCourse, p, allowance);
+          const ph = getPH(playerCourse, p, allowance, config.handicapSystem);
           const sr = strokesOnHole(ph, playerHoleData.si);
           const gross = (scores.playerScores[p.id] || {})[hole];
           const pts = stablefordPts(gross, playerHoleData.par, sr);
           const isJokerHere = round.jokerEnabled && Number(scores.jokerHoles?.[p.id]) === hole;
           const displayPts = isJokerHere && pts != null ? pts * 2 : pts;
-          const stats = computePlayerRoundStats(round, p, allowance, scores);
+          const stats = computePlayerRoundStats(round, p, allowance, scores, config.handicapSystem);
           return (
             <div key={p.id} className="rounded-xl p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
               <div className="flex items-center justify-between mb-2">
@@ -2948,7 +2975,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
                 if (so && player) {
                   const g = so.playerScores?.[playerId]?.[hole.number];
                   if (g !== "" && g != null) {
-                    const ph = getPH(round.course, player, allowance);
+                    const ph = getPH(round.course, player, allowance, config.handicapSystem);
                     const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
                     if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
                       bestHoleScore = pts;
@@ -3000,7 +3027,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
             if (so && player) {
               const g = so.playerScores?.[playerId]?.[hole.number];
               if (g !== "" && g != null) {
-                const ph = getPH(r.course, player, allowance);
+                const ph = getPH(r.course, player, allowance, config.handicapSystem);
                 const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
                 if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
                   bestHoleScore = pts;
@@ -3054,7 +3081,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
               }
             }
 
-            const stats = computePlayerRoundStats(rnd, p, allowance, so);
+            const stats = computePlayerRoundStats(rnd, p, allowance, so, config.handicapSystem);
             // For overall, include joker bonus only if the round's jokerBonusAppliesOverall is true
             // stats.raw = base points, stats.dayTotal = base + joker bonus
             const roundTotal = rnd.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
@@ -3064,9 +3091,9 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
           let finalScore = total;
           let skinsData = null;
           if (competition === "stableford") finalScore = total;
-          else if (competition === "best-indexed") finalScore = computePlayerBestIndexedScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores);
+          else if (competition === "best-indexed") finalScore = computePlayerBestIndexedScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores, config.handicapSystem);
           else if (competition === "skins") {
-            skinsData = computePlayerSkinsScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores, config.players, true);
+            skinsData = computePlayerSkinsScore(config.rounds.filter(r => !r.excludeFromOverall), p, allowance, allScoresByRound, currentRoundId, currentScores, config.players, true, config.handicapSystem);
             finalScore = skinsData.totalWon;
           }
           return { id: p.id, name: p.name, groupName: "All rounds", pts: finalScore, thru, skinsData };
@@ -3092,16 +3119,16 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
             }
           }
         }
-        const stats = computePlayerRoundStats(r, p, allowance, so);
+        const stats = computePlayerRoundStats(r, p, allowance, so, config.handicapSystem);
         let finalScore = stats.dayTotal;
         let skinsData = null;
         if (competition === "stableford") finalScore = stats.dayTotal;
-        else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, group ? { [r.id]: { [group.id]: so } } : {}, r.id, so) : 0;
+        else if (competition === "best-indexed") finalScore = r ? computePlayerBestIndexedScore([r], p, allowance, group ? { [r.id]: { [group.id]: so } } : {}, r.id, so, config.handicapSystem) : 0;
         else if (competition === "best-ball-teams") finalScore = stats.dayTotal; // Teams handled separately above
         else if (competition === "skins") {
           // For skins, need ALL scores from this round (all groups), not just current group
           const roundAllScores = allScoresByRound[r.id] || {};
-          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: roundAllScores }, currentRoundId, currentScores, config.players, true);
+          skinsData = computePlayerSkinsScore([r], p, allowance, { [r.id]: roundAllScores }, currentRoundId, currentScores, config.players, true, config.handicapSystem);
           finalScore = skinsData.totalWon;
         }
         return { id: p.id, name: p.name, groupName: group?.name || "–", pts: finalScore, gross: stats.gross, thru: stats.thru, jokerBonus: stats.jokerBonus, jokerHole: stats.jokerHole, skinsData };
@@ -3382,7 +3409,7 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
                         selectedRound.course.holes.forEach((h) => {
                           const g = playerScores[h.number];
                           if (g !== "" && g != null) {
-                            const ph = getPH(selectedRound.course, player, allowance);
+                            const ph = getPH(selectedRound.course, player, allowance, config.handicapSystem);
                             const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
                             if (pts != null) {
                               // Apply joker bonus (double points) if this is the joker hole
@@ -3505,7 +3532,7 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
             const group = getPlayerGroup(r, p.id);
             const so = group ? roundScores[group.id] : null;
             if (so) {
-              const stats = computePlayerRoundStats(r, p, allowance, so);
+              const stats = computePlayerRoundStats(r, p, allowance, so, config.handicapSystem);
               total += r.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
             }
           });
@@ -3710,14 +3737,14 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
   function startEdit(p) {
     setEditingId(p.id);
     setEditName(p.name);
-    setEditHcp(p.handicap != null ? String(p.handicap) : "");
+    setEditHcp(p.handicapIndex != null ? String(p.handicapIndex) : "");
     setConfirmId(null);
   }
 
   function saveEdit(playerId) {
     const hcp = parseFloat(editHcp);
     const updatedPlayers = localConfig.players.map(p =>
-      p.id === playerId ? { ...p, name: editName.trim(), handicap: isNaN(hcp) ? p.handicap : hcp } : p
+      p.id === playerId ? { ...p, name: editName.trim(), handicapIndex: isNaN(hcp) ? p.handicapIndex : hcp } : p
     );
     setLocalConfig(c => ({ ...c, players: updatedPlayers }));
     setEditingId(null);
@@ -3736,7 +3763,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
   function addPlayer() {
     if (!addName.trim()) return;
     const hcp = parseFloat(addHcp);
-    const newPlayer = { id: uid(), name: addName.trim(), handicap: isNaN(hcp) ? 0 : hcp };
+    const newPlayer = { id: uid(), name: addName.trim(), handicapIndex: isNaN(hcp) ? 0 : hcp };
     setLocalConfig(c => ({ ...c, players: [...c.players, newPlayer] }));
     setAddName(""); setAddHcp(""); setShowAdd(false);
   }
@@ -3760,7 +3787,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
               <div key={p.id} className="p-3 rounded-xl bg-white border" style={{ borderColor: COLORS.gold }}>
                 <div className="flex gap-2 mb-2">
                   <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" className="flex-1 px-2 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
-                  <input value={editHcp} onChange={e => setEditHcp(e.target.value)} placeholder="HCP" type="number" step="0.1" className="w-20 px-2 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+                  <input value={editHcp} onChange={e => setEditHcp(e.target.value)} placeholder="HI" type="number" step="0.1" className="w-20 px-2 py-1.5 rounded text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(p.id)} className="flex-1 py-1.5 rounded text-sm font-medium text-white" style={{ backgroundColor: COLORS.green }}>Save</button>
@@ -3797,7 +3824,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
               })()}
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate" style={{ color: COLORS.charcoal }}>{p.name}</p>
-                <p className="text-xs opacity-60">HCP {p.handicap ?? "—"}{group ? ` · ${group.name}` : " · Unassigned"}</p>
+                <p className="text-xs opacity-60">HI {p.handicapIndex ?? "—"}{group ? ` · ${group.name}` : " · Unassigned"}</p>
               </div>
               <button onClick={() => startEdit(p)} className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: COLORS.goldPale }}>
                 <Pencil size={14} style={{ color: COLORS.gold }} />
@@ -3815,7 +3842,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
           <p className="text-sm font-medium mb-2" style={{ color: COLORS.charcoal }}>Add Player</p>
           <div className="flex gap-2 mb-3">
             <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="Name" className="flex-1 px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
-            <input value={addHcp} onChange={e => setAddHcp(e.target.value)} placeholder="HCP" type="number" step="0.1" className="w-20 px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+            <input value={addHcp} onChange={e => setAddHcp(e.target.value)} placeholder="HI" type="number" step="0.1" className="w-20 px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
           </div>
           <p className="text-xs opacity-60 mb-3">Assign to a group via Edit Event Setup → Groups after adding.</p>
           <div className="flex gap-2">
