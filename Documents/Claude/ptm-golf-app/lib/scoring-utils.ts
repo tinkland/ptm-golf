@@ -16,7 +16,8 @@ export interface PlayerRound {
 
 // Calculate net score for a hole (gross - handicap strokes)
 export const calculateNetScore = (gross: number, par: number, handicap: number, playerHandicap: number): number => {
-  const strokesReceived = handicap <= 18 ? (playerHandicap % 18 >= handicap ? 1 : 0) : Math.floor(playerHandicap / 18) + (playerHandicap % 18 >= handicap ? 1 : 0)
+  // For holes 1-18: player gets 1 stroke if hole's handicap <= player's handicap
+  const strokesReceived = handicap <= playerHandicap ? 1 : 0
   return gross - strokesReceived
 }
 

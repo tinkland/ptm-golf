@@ -58,29 +58,29 @@ describe('Scoring Utilities', () => {
 
     it('should handle handicap strokes correctly', () => {
       // Par 4, gross 5, handicap 2 (receives stroke on this hole), player handicap 10
-      // Net = 5 - 1 = 4 (par), should get 3 points
+      // Net = 5 - 1 = 4 (par), should get 2 points
       const points = calculateStablefordPoints(5, 4, 2, 10)
-      expect(points).toBe(3)
+      expect(points).toBe(2)
     })
   })
 
   describe('calculateTotalStableford', () => {
     it('should sum Stableford points for all holes', () => {
       const round = createTestRound([
-        { hole: 1, par: 4, gross: 4, handicap: 10 }, // par = 3 pts
-        { hole: 2, par: 3, gross: 3, handicap: 4 }, // par = 3 pts
-        { hole: 3, par: 5, gross: 5, handicap: 14 }, // par = 3 pts
+        { hole: 1, par: 4, gross: 4, handicap: 10 }, // (4-1=3, 4-3=1 birdie) = 3 pts
+        { hole: 2, par: 3, gross: 3, handicap: 4 }, // (3-1=2, 3-2=1 birdie) = 3 pts
+        { hole: 3, par: 5, gross: 5, handicap: 14 }, // (5-0=5, 5-5=0 par) = 2 pts
       ])
-      expect(calculateTotalStableford(round)).toBe(9)
+      expect(calculateTotalStableford(round)).toBe(8)
     })
 
     it('should handle mixed results', () => {
       const round = createTestRound([
-        { hole: 1, par: 4, gross: 3, handicap: 10 }, // birdie = 4 pts
-        { hole: 2, par: 3, gross: 4, handicap: 4 }, // bogey = 2 pts
-        { hole: 3, par: 5, gross: 6, handicap: 14 }, // bogey = 2 pts
+        { hole: 1, par: 4, gross: 3, handicap: 10 }, // birdie (3-1=2, 4-2=2) = 4 pts
+        { hole: 2, par: 3, gross: 4, handicap: 4 }, // par (4-1=3, 3-3=0) = 2 pts
+        { hole: 3, par: 5, gross: 6, handicap: 14 }, // double bogey (6-0=6, 5-6=-1) = 1 pt
       ])
-      expect(calculateTotalStableford(round)).toBe(8)
+      expect(calculateTotalStableford(round)).toBe(7)
     })
 
     it('should return 0 for no holes played', () => {
