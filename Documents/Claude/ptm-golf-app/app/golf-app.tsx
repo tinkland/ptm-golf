@@ -2441,7 +2441,20 @@ function JoinScreen({ config, round, onJoin, onEdit, onReset }) {
 }
 
 // End of Day Processing Screen
-function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allScoresByRound: propAllScoresByRound = {}, currentScores, gameEntriesData, onComplete, onBack, eventId }) {
+function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allScoresByRound: propAllScoresByRound = {}, currentScores, gameEntriesData, onComplete, onBack, eventId, isAdmin = false }) {
+  // Safety check: only admins should access this screen
+  if (!isAdmin) {
+    return (
+      <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col items-center justify-center max-w-md mx-auto px-4">
+        <p className="text-center" style={{ color: COLORS.charcoal }}>
+          This screen is for admins only.
+        </p>
+        <button onClick={onBack} className="mt-4 py-2 px-6 rounded-lg font-medium" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}>
+          Go Back
+        </button>
+      </div>
+    );
+  }
   const [gameWinners, setGameWinners] = useState({});
   const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({});
   const [groupMode, setGroupMode] = useState<"ascending"|"random"|"manual">("ascending");
@@ -5185,6 +5198,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
         onComplete={handleEndOfDayComplete}
         onBack={() => setShowEndOfDay(false)}
         eventId={eventId}
+        isAdmin={effectiveIsAdmin}
       />
     );
   }
