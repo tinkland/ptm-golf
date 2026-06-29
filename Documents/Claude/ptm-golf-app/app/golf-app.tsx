@@ -592,6 +592,7 @@ function defaultRound(idx) {
   return {
     id: `round${idx}`,
     label: `Round ${idx}`,
+    date: "",
     course: { name: "", slope: 113, rating: 70, holes: defaultHoles() },
     jokerEnabled: idx === 2,
     jokerBonusAppliesOverall: true,
@@ -675,7 +676,11 @@ function WelcomePage({ onLoginClick, onSetupClick, logo, links }) {
   return (
     <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col max-w-md mx-auto">
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        <div className="text-7xl mb-4">{logo || DEFAULT_LOGO}</div>
+        <div className="mb-4 flex items-center justify-center">
+          {logo && (logo.startsWith("data:") || logo.startsWith("http"))
+            ? <img src={logo} className="max-h-20 max-w-48 object-contain" alt="Logo" />
+            : <span className="text-7xl">{logo || DEFAULT_LOGO}</span>}
+        </div>
         <h1 className="text-4xl font-display mb-2" style={{ color: COLORS.green }}>
           PTM Golf
         </h1>
@@ -850,6 +855,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const [allowStable, setAllowStable] = useState(initialConfig?.allowance?.stableford ?? 95);
   const [allowMatch, setAllowMatch] = useState(initialConfig?.allowance?.matchplay ?? 100);
   const [handicapSystem, setHandicapSystem] = useState<'whs' | 'ga'>(initialConfig?.handicapSystem ?? 'whs');
+  const [signaturesRequired, setSignaturesRequired] = useState<boolean>(initialConfig?.signaturesRequired ?? false);
 
   // Update rounds when numRounds changes
   const handleNumRoundsChange = (num: number) => {
@@ -1102,11 +1108,25 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   function handleLogoUpload(e: any) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert("Image must be under 5 MB"); return; }
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setAdminLogo(base64);
-      localStorage.setItem("ptm-golf-logo", base64);
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 300, MAX_H = 150;
+        let w = img.width, h = img.height;
+        if (w > MAX_W || h > MAX_H) {
+          const scale = Math.min(MAX_W / w, MAX_H / h);
+          w = Math.round(w * scale); h = Math.round(h * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+        const base64 = canvas.toDataURL("image/jpeg", 0.85);
+        setAdminLogo(base64);
+        localStorage.setItem("ptm-golf-logo", base64);
+      };
+      img.src = ev.target?.result as string;
     };
     reader.readAsDataURL(file);
   }
@@ -1147,6 +1167,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       matches,
       allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
       handicapSystem,
+      signaturesRequired,
       links: adminLinks,
     };
     onSave(config);
@@ -1323,7 +1344,10 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
 
       <SectionCard title="Course">
         <div className="flex flex-col gap-2">
-          <input placeholder="Round label" value={round.label} onChange={(e) => updateRound("label", e.target.value)} className="rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+          <div className="flex gap-2">
+            <input placeholder="Round label" value={round.label} onChange={(e) => updateRound("label", e.target.value)} className="flex-1 rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}` }} />
+            <input type="date" value={round.date || ""} onChange={(e) => updateRound("date", e.target.value)} className="rounded-md px-3 py-2 text-sm" style={{ border: `1px solid ${COLORS.line}`, colorScheme: "light" }} />
+          </div>
           <label className="flex items-center gap-2 px-1 py-1">
             <input
               type="checkbox"
@@ -1806,8 +1830,12 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           <div className="flex flex-col gap-4">
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: COLORS.charcoal }}>Logo (emoji or image)</p>
-              <div className="flex gap-2">
-                <div className="text-4xl">{adminLogo}</div>
+              <div className="flex gap-2 items-center">
+                <div className="w-14 h-14 flex items-center justify-center flex-shrink-0 rounded-lg overflow-hidden" style={{ background: COLORS.cream }}>
+                  {adminLogo.startsWith("data:") || adminLogo.startsWith("http")
+                    ? <img src={adminLogo} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} alt="Logo" />
+                    : <span className="text-4xl">{adminLogo}</span>}
+                </div>
                 <button
                   onClick={() => logoInputRef.current?.click()}
                   className="flex-1 py-2 rounded-lg text-sm font-medium"
@@ -1867,6 +1895,21 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
                   </button>
                 )}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-xs font-medium" style={{ color: COLORS.charcoal }}>Player signatures required</p>
+                <p className="text-[11px] opacity-60" style={{ color: COLORS.charcoal }}>Scorers must collect each player's signature at end of round</p>
+              </div>
+              <button
+                onClick={() => setSignaturesRequired(v => !v)}
+                className="relative w-12 h-6 rounded-full transition-colors flex-shrink-0"
+                style={{ backgroundColor: signaturesRequired ? COLORS.green : COLORS.line }}
+              >
+                <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  style={{ transform: signaturesRequired ? "translateX(24px)" : "translateX(0)" }} />
+              </button>
             </div>
           </div>
         </SectionCard>
@@ -4146,7 +4189,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
       const newEventId = uid();
       const configWithIds = {
         ...newConfig,
-        adminUserId: userId !== "admin" ? userId : undefined, // Store admin's userId for later identification
+        adminUserId: userId !== "admin" ? userId : undefined,
+        savedAt: Date.now(),
         rounds: newConfig.rounds.map((r) => ({
           ...r,
           games: (r.games || []).map((g) => ({

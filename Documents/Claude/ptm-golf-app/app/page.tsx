@@ -19,11 +19,81 @@ const COLORS = {
   line: "#D8CFB8",
 };
 
+function LogoDisplay({ logo, bigClass = "text-7xl" }: { logo: string; bigClass?: string }) {
+  if (logo && (logo.startsWith("data:") || logo.startsWith("http"))) {
+    return <img src={logo} className="max-h-20 max-w-48 object-contain" alt="Logo" />;
+  }
+  return <span className={bigClass}>{logo || DEFAULT_LOGO}</span>;
+}
+
+function getStoredEvents(): { id: string; eventName: string; savedAt?: number; rounds?: any[] }[] {
+  const events: any[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("event-")) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const data = JSON.parse(raw);
+        events.push({ id: key.replace("event-", ""), eventName: data.eventName || "Unnamed event", savedAt: data.savedAt, rounds: data.rounds });
+      }
+    }
+  } catch {}
+  return events.sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0));
+}
+
+function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; onOpenEvent: (id: string) => void }) {
+  const events = getStoredEvents();
+  const currentId = (() => { try { return localStorage.getItem("ptm-golf-eventId"); } catch { return null; } })();
+
+  return (
+    <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col max-w-md mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-1" style={{ color: COLORS.green }}>Admin</h1>
+      <p className="text-sm opacity-60 mb-6" style={{ color: COLORS.charcoal }}>Your events</p>
+
+      <button onClick={onNewEvent}
+        className="w-full py-3 rounded-xl font-medium mb-5 flex items-center justify-center gap-2"
+        style={{ backgroundColor: COLORS.green, color: "white" }}>
+        + Setup New Event
+      </button>
+
+      {events.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {events.map(ev => {
+            const isCurrent = ev.id === currentId;
+            const dateStr = ev.rounds?.[0]?.date
+              ? new Date(ev.rounds[0].date).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
+              : null;
+            return (
+              <button key={ev.id} onClick={() => onOpenEvent(ev.id)}
+                className="w-full px-4 py-3 rounded-xl text-left flex items-center justify-between"
+                style={{ backgroundColor: "white", border: `1.5px solid ${isCurrent ? COLORS.gold : COLORS.line}` }}>
+                <div>
+                  <p className="font-medium text-sm" style={{ color: COLORS.charcoal }}>{ev.eventName}</p>
+                  {dateStr && <p className="text-xs opacity-60 mt-0.5" style={{ color: COLORS.charcoal }}>{dateStr}</p>}
+                </div>
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full ml-3 flex-shrink-0"
+                  style={{ backgroundColor: isCurrent ? COLORS.goldPale : COLORS.greenPale, color: isCurrent ? COLORS.gold : COLORS.green }}>
+                  {isCurrent ? "Current" : "Past"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {events.length === 0 && (
+        <p className="text-sm opacity-50 text-center mt-4" style={{ color: COLORS.charcoal }}>No events found on this device.</p>
+      )}
+    </div>
+  );
+}
+
 function WelcomePage({ onLoginClick, onAdminClick, logo, links, eventName }) {
   return (
     <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col max-w-md mx-auto">
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        <div className="text-7xl mb-4">{logo || DEFAULT_LOGO}</div>
+        <div className="mb-4 flex items-center justify-center"><LogoDisplay logo={logo} /></div>
         <h1 className="text-4xl font-bold mb-2" style={{ color: COLORS.green }}>
           PTM Golf
         </h1>
@@ -184,7 +254,7 @@ function PostLoginHome({ eventName, onAdminSetup, onSignOut }) {
             className="w-full py-3 rounded-lg font-medium"
             style={{ backgroundColor: COLORS.gold, color: "white" }}
           >
-            Admin Setup
+            Admin
           </button>
 
           <button
@@ -203,6 +273,7 @@ function PostLoginHome({ eventName, onAdminSetup, onSignOut }) {
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
+  const [showAdminHistory, setShowAdminHistory] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [showAdminSetup, setShowAdminSetup] = useState(false);
   const [adminModeAfterLogin, setAdminModeAfterLogin] = useState(false);
@@ -212,12 +283,10 @@ export default function Home() {
   const [eventName, setEventName] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("ptm-golf-config");
-    if (saved) {
-      const config = JSON.parse(saved);
-      if (config.logo) setLogo(config.logo);
-      if (config.links) setLinks(config.links);
-    }
+    setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
+    try {
+      setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]"));
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -265,7 +334,21 @@ export default function Home() {
 
   if (!user && hasEventId) return <AuthUI />;
 
+  function handleOpenEvent(id: string) {
+    localStorage.setItem("ptm-golf-eventId", id);
+    setShowAdminHistory(false);
+    setAdminModeAfterLogin(true);
+  }
+
   if (!user) {
+    if (showAdminHistory) {
+      return (
+        <AdminHomeScreen
+          onNewEvent={() => { setShowAdminHistory(false); setShowAdminModal(true); }}
+          onOpenEvent={handleOpenEvent}
+        />
+      );
+    }
     if (showAdminModal) {
       return (
         <LicenseKeyModal
@@ -274,7 +357,7 @@ export default function Home() {
             setShowAdminModal(false);
             setShowAdminSetup(true);
           }}
-          onCancel={() => setShowAdminModal(false)}
+          onCancel={() => { setShowAdminModal(false); setShowAdminHistory(false); }}
         />
       );
     }
@@ -287,7 +370,7 @@ export default function Home() {
           onAdminDone={() => {
             setShowAdminSetup(false);
             setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
-            setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]"));
+            try { setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]")); } catch {}
           }}
         />
       );
@@ -296,7 +379,7 @@ export default function Home() {
     return (
       <WelcomePage
         onLoginClick={() => setShowLogin(true)}
-        onAdminClick={() => setShowAdminModal(true)}
+        onAdminClick={() => setShowAdminHistory(true)}
         logo={logo}
         links={links}
         eventName={eventName}
@@ -305,6 +388,14 @@ export default function Home() {
   }
 
   // Authenticated user
+  if (showAdminHistory) {
+    return (
+      <AdminHomeScreen
+        onNewEvent={() => { setShowAdminHistory(false); setShowAdminModal(true); }}
+        onOpenEvent={handleOpenEvent}
+      />
+    );
+  }
   if (showAdminModal) {
     return (
       <LicenseKeyModal
@@ -313,7 +404,7 @@ export default function Home() {
           setShowAdminModal(false);
           setAdminModeAfterLogin(true);
         }}
-        onCancel={() => setShowAdminModal(false)}
+        onCancel={() => { setShowAdminModal(false); setShowAdminHistory(false); }}
       />
     );
   }
@@ -354,7 +445,7 @@ export default function Home() {
   return (
     <PostLoginHome
       eventName={eventName}
-      onAdminSetup={() => setShowAdminModal(true)}
+      onAdminSetup={() => setShowAdminHistory(true)}
       onSignOut={async () => { await logout(); }}
     />
   );
