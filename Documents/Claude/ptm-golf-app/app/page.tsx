@@ -93,22 +93,27 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
 
   const handleDeleteEvent = async (eventId: string, eventName: string) => {
     try {
-      // Delete from localStorage
-      localStorage.removeItem(`event-${eventId}`);
-
-      // Delete from Firebase collections
-      await fetch('/api/delete-event', {
+      // Delete from Firebase first
+      const response = await fetch('/api/delete-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId }),
-      }).catch(() => null);
+      });
 
-      // Remove from local state immediately
+      if (!response.ok) {
+        throw new Error(`Failed to delete from Firebase: ${response.statusText}`);
+      }
+
+      // Only after Firebase deletion succeeds, delete from localStorage
+      localStorage.removeItem(`event-${eventId}`);
+
+      // Remove from local state
       setEvents(prev => prev.filter(e => e.id !== eventId));
       setDeleteConfirm(null);
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete event. Please try again.");
+      alert(`Failed to delete event: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setDeleteConfirm(null);
     }
   };
 
