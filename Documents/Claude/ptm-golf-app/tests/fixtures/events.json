@@ -1,0 +1,63 @@
+{
+  "basicEvent": {
+    "eventName": "Test Golf Tournament",
+    "handicapSystem": "WHS",
+    "signaturesRequired": false,
+    "adminEmail": "admin@test.com",
+    "roundCount": 2,
+    "courseId": "course-001",
+    "rounds": [
+      {
+        "id": "round-1",
+        "label": "Round 1",
+        "date": "2026-06-29T09:00:00Z",
+        "courseId": "course-001",
+        "par": 72,
+        "si": [10, 4, 14, 2, 8, 16, 6, 12, 1, 9, 3, 15, 7, 11, 13, 5, 17, 18]
+      }
+    ],
+    "competitions": [
+      {
+        "id": "comp-stableford",
+        "name": "Stableford",
+        "type": "stableford",
+        "selected": true
+      },
+      {
+        "id": "comp-gross",
+        "name": "Gross Score",
+        "type": "gross",
+        "selected": true
+      }
+    ],
+    "groups": [
+      {
+        "id": "group-1",
+        "name": "Group 1",
+        "players": ["player-1", "player-2"]
+      }
+    ]
+  },
+  "eventWithPlayers": {
+    "eventName": "Pro Am Challenge",
+    "handicapSystem": "WHS",
+    "signaturesRequired": true,
+    "adminEmail": "admin@proam.com",
+    "roundCount": 1,
+    "courseId": "course-002",
+    "players": [
+      {
+        "id": "player-1",
+        "name": "John Doe",
+        "email": "john@test.com",
+        "handicap": 5
+      },
+      {
+        "id": "player-2",
+        "name": "Jane Smith",
+        "email": "jane@test.com",
+        "handicap": 12
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "sampleScores": {
+    "player-1": {
+      "holes": [
+        { "hole": 1, "par": 4, "gross": 4, "handicap": 10 },
+        { "hole": 2, "par": 3, "gross": 3, "handicap": 4 },
+        { "hole": 3, "par": 5, "gross": 5, "handicap": 14 },
+        { "hole": 4, "par": 4, "gross": 4, "handicap": 2 },
+        { "hole": 5, "par": 4, "gross": 5, "handicap": 8 },
+        { "hole": 6, "par": 3, "gross": 3, "handicap": 16 },
+        { "hole": 7, "par": 4, "gross": 4, "handicap": 6 },
+        { "hole": 8, "par": 5, "gross": 5, "handicap": 12 },
+        { "hole": 9, "par": 4, "gross": 4, "handicap": 1 }
+      ]
+    },
+    "player-2": {
+      "holes": [
+        { "hole": 1, "par": 4, "gross": 5, "handicap": 10 },
+        { "hole": 2, "par": 3, "gross": 3, "handicap": 4 },
+        { "hole": 3, "par": 5, "gross": 6, "handicap": 14 },
+        { "hole": 4, "par": 4, "gross": 3, "handicap": 2 },
+        { "hole": 5, "par": 4, "gross": 4, "handicap": 8 },
+        { "hole": 6, "par": 3, "gross": 4, "handicap": 16 },
+        { "hole": 7, "par": 4, "gross": 4, "handicap": 6 },
+        { "hole": 8, "par": 5, "gross": 5, "handicap": 12 },
+        { "hole": 9, "par": 4, "gross": 4, "handicap": 1 }
+      ]
+    }
+  }
+}
