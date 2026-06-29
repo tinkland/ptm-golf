@@ -4287,7 +4287,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
 }
 
 // Main GolfApp Component
-export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void; adminLimits?: { maxSlots: number; tier: string } | null }) {
+export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, initialTab }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void; adminLimits?: { maxSlots: number; tier: string } | null; initialTab?: string }) {
   const { logout } = useAuth();
   const loadedScoresRef = useRef<any>(null); // Store loaded scores to avoid state timing issues
   const [screen, setScreen] = useState("loading");
@@ -4296,7 +4296,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
   const [config, setConfig] = useState<any>(null);
   const [groupSelections, setGroupSelections] = useState({});
   const [activeRoundId, setActiveRoundId] = useState(null);
-  const [tab, setTab] = useState("score");
+  const [tab, setTab] = useState(initialTab || "score");
   const [scores, setScores] = useState({ playerScores: {}, jokerHoles: {} });
   const [gameEntries, setGameEntries] = useState<any[]>([]);
   const [allScoresByRound, setAllScoresByRound] = useState({});

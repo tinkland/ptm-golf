@@ -42,7 +42,7 @@ function getStoredEvents(): { id: string; eventName: string; savedAt?: number; r
   return events.sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0));
 }
 
-function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; onOpenEvent: (id: string) => void }) {
+function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; onOpenEvent: (id: string, isPast: boolean) => void }) {
   const events = getStoredEvents();
   const currentId = (() => { try { return localStorage.getItem("ptm-golf-eventId"); } catch { return null; } })();
 
@@ -65,7 +65,7 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
               ? new Date(ev.rounds[0].date).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
               : null;
             return (
-              <button key={ev.id} onClick={() => onOpenEvent(ev.id)}
+              <button key={ev.id} onClick={() => onOpenEvent(ev.id, !isCurrent)}
                 className="w-full px-4 py-3 rounded-xl text-left flex items-center justify-between"
                 style={{ backgroundColor: "white", border: `1.5px solid ${isCurrent ? COLORS.gold : COLORS.line}` }}>
                 <div>
@@ -277,6 +277,7 @@ export default function Home() {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [showAdminSetup, setShowAdminSetup] = useState(false);
   const [adminModeAfterLogin, setAdminModeAfterLogin] = useState(false);
+  const [openEventInitialTab, setOpenEventInitialTab] = useState<string | undefined>(undefined);
   const [adminLimits, setAdminLimits] = useState<{ maxSlots: number; tier: string } | null>(null);
   const [logo, setLogo] = useState(DEFAULT_LOGO);
   const [links, setLinks] = useState<any[]>([]);
@@ -334,8 +335,9 @@ export default function Home() {
 
   if (!user && hasEventId) return <AuthUI />;
 
-  function handleOpenEvent(id: string) {
+  function handleOpenEvent(id: string, isPast: boolean) {
     localStorage.setItem("ptm-golf-eventId", id);
+    setOpenEventInitialTab(isPast ? "results" : undefined);
     setShowAdminHistory(false);
     setAdminModeAfterLogin(true);
   }
@@ -433,10 +435,12 @@ export default function Home() {
         userId={user.uid}
         isAdmin={true}
         adminLimits={adminLimits}
+        initialTab={openEventInitialTab}
         onAdminDone={() => {
           setAdminModeAfterLogin(false);
+          setOpenEventInitialTab(undefined);
           setLogo(localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
-          setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]"));
+          try { setLinks(JSON.parse(localStorage.getItem("ptm-golf-links") || "[]")); } catch {}
         }}
       />
     );
