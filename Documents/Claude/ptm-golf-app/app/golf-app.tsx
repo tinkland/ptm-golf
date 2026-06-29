@@ -2650,22 +2650,45 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
             return null;
           })()}
 
-          {/* Last 3-Putter */}
+          {/* 3-Putts Summary */}
           {(() => {
             const snakeEntries = (gameEntries as any[]).filter((e: any) => e.gameId === "snake" && e.threePutts);
             if (snakeEntries.length === 0) return null;
 
+            const threeePuttsByPlayer: { [key: string]: any[] } = {};
+            snakeEntries.forEach((e: any) => {
+              if (!threeePuttsByPlayer[e.playerId]) threeePuttsByPlayer[e.playerId] = [];
+              threeePuttsByPlayer[e.playerId].push(e.hole);
+            });
+
             const lastSnakeEntry = snakeEntries.reduce((latest: any, current: any) => {
               return !latest || (current.hole > latest.hole) ? current : latest;
             });
-
             const lastSnaker = config.players.find((p) => p.id === lastSnakeEntry.playerId);
+
             return (
               <div>
-                <p className="text-xs font-medium mb-2" style={{ color: COLORS.charcoal }}>🐍 Current Snake Holder</p>
-                <div className="p-2 rounded text-sm" style={{ backgroundColor: COLORS.flagPale }}>
-                  <span className="font-medium" style={{ color: COLORS.flag }}>{lastSnaker?.name}</span>
-                  <span className="text-xs opacity-70 ml-2">(3-putted on hole {lastSnakeEntry.hole})</span>
+                <p className="text-xs font-medium mb-2" style={{ color: COLORS.charcoal }}>🐍 3-Putts Summary</p>
+                <div className="space-y-2">
+                  {config.players
+                    .filter((p) => threeePuttsByPlayer[p.id])
+                    .sort((a, b) => (threeePuttsByPlayer[b.id]?.length || 0) - (threeePuttsByPlayer[a.id]?.length || 0))
+                    .map((p) => {
+                      const holes = threeePuttsByPlayer[p.id] || [];
+                      const isHolder = p.id === lastSnaker?.id;
+                      return (
+                        <div key={p.id} className="p-2 rounded text-sm flex items-center justify-between" style={{ backgroundColor: isHolder ? COLORS.flagPale : COLORS.cream }}>
+                          <div>
+                            <span className="font-medium" style={{ color: COLORS.charcoal }}>{p.name}</span>
+                            <span className="text-xs opacity-60 ml-2">holes {holes.sort((a, b) => a - b).join(", ")}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold" style={{ color: COLORS.gold }}>{holes.length}×</span>
+                            {isHolder && <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: COLORS.flag, color: "white" }}>🐍 Current</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             );
@@ -2742,7 +2765,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
       {teams && teams.length > 0 && (
         <div className="rounded-xl overflow-hidden border mb-6" style={{ borderColor: COLORS.line }}>
           <div className="bg-white p-4" style={{ backgroundColor: COLORS.greenPale }}>
-            <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams - {dayOneRound.label} Results</h3>
+            <h3 className="font-medium" style={{ color: COLORS.green }}>🤝 Overall Best Ball Teams - Results thru {dayOneRound.label}</h3>
           </div>
           <div className="bg-white p-4">
             {(() => {
