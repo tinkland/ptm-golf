@@ -5039,7 +5039,15 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
     if (effectiveIsAdmin) {
       setShowEndOfDay(true);
     } else {
-      setShowEndOfRoundGames(true);
+      // Non-admins go directly to Results (leaderboard) - skip EndOfRoundGamesScreen
+      const currentRoundIdx = config.rounds.findIndex((r) => r.id === activeRoundId);
+      const nextRound = config.rounds[currentRoundIdx + 1];
+      if (nextRound) {
+        setTab("leaderboard");
+      } else {
+        celebrate("🎉 All rounds complete!");
+        setScreen("main");
+      }
     }
   };
 
