@@ -5224,7 +5224,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
       }
 
       // Save full event config to localStorage (so scorers can load it even without Firebase read permission)
-      localStorage.setItem(`event-${newEventId}`, JSON.stringify(configWithIds));
+      const configWithTimestamp = { ...configWithIds, savedAt: Date.now() };
+      localStorage.setItem(`event-${newEventId}`, JSON.stringify(configWithTimestamp));
 
       setScreen("event-created");
       celebrate("✅ Event created!");

@@ -35,7 +35,14 @@ function getStoredEvents(): { id: string; eventName: string; savedAt?: number; r
         const raw = localStorage.getItem(key);
         if (!raw) continue;
         const data = JSON.parse(raw);
-        events.push({ id: key.replace("event-", ""), eventName: data.eventName || "Unnamed event", savedAt: data.savedAt, rounds: data.rounds });
+        // Use savedAt if available, otherwise fall back to first round date
+        const timestamp = data.savedAt || (data.rounds?.[0]?.date ? new Date(data.rounds[0].date).getTime() : 0);
+        events.push({
+          id: key.replace("event-", ""),
+          eventName: data.eventName || "Unnamed event",
+          savedAt: timestamp,
+          rounds: data.rounds
+        });
       }
     }
   } catch {}
