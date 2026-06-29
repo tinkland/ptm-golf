@@ -614,9 +614,9 @@ async function saveEventToFirebase(eventId: string, userId: string, eventData: a
   await setDoc(doc(db, "events", eventId), {
     ...eventData,
     ownerId: userId,
-    createdAt: new Date(),
+    createdAt: eventData.createdAt || new Date(),
     updatedAt: new Date(),
-  });
+  }, { merge: true });
 }
 
 async function getEventFromFirebase(eventId: string) {

@@ -4,6 +4,8 @@ import { useAuth } from './auth-provider';
 import AuthUI from './auth-ui';
 import GolfApp from './golf-app';
 import { useState, useEffect } from 'react';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 
 const DEFAULT_LOGO = "⛳";
 const COLORS = {
@@ -50,9 +52,44 @@ function getStoredEvents(): { id: string; eventName: string; savedAt?: number; r
 }
 
 function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; onOpenEvent: (id: string, isPast: boolean) => void }) {
-  const events = getStoredEvents();
+  const { user } = useAuth();
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const currentId = (() => { try { return localStorage.getItem("ptm-golf-eventId"); } catch { return null; } })();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  // Fetch events from Firebase
+  useEffect(() => {
+    const fetchEvents = async () => {
+      if (!user) return;
+      setLoading(true);
+      try {
+        const q = query(collection(db, 'events'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const fetchedEvents = snapshot.docs
+          .filter(doc => {
+            const data = doc.data();
+            return data.ownerId === user.uid;
+          })
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              eventName: data.eventName || 'Unnamed event',
+              createdAt: data.createdAt?.toDate?.() || new Date(data.createdAt),
+              rounds: data.rounds || [],
+            };
+          });
+        setEvents(fetchedEvents);
+      } catch (err) {
+        console.warn('Could not load events from Firebase, using localStorage fallback:', err);
+        setEvents(getStoredEvents());
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEvents();
+  }, [user]);
 
   const handleDeleteEvent = async (eventId: string, eventName: string) => {
     try {
@@ -124,12 +161,16 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
         </div>
       )}
 
-      {events.length > 0 && (
+      {loading && (
+        <p className="text-sm opacity-60 text-center my-4" style={{ color: COLORS.charcoal }}>Loading your events...</p>
+      )}
+
+      {!loading && events.length > 0 && (
         <div className="flex flex-col gap-2">
           {events.map(ev => {
             const isCurrent = ev.id === currentId;
-            const dateTimeStr = ev.rounds?.[0]?.date
-              ? new Date(ev.rounds[0].date).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+            const dateTimeStr = ev.createdAt
+              ? new Date(ev.createdAt).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
               : null;
             const eventUrl = `https://ptm-golf.vercel.app/?eventId=${ev.id}`;
             return (
@@ -138,7 +179,7 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
                 <button onClick={() => onOpenEvent(ev.id, !isCurrent)}
                   className="flex-1 text-left">
                   <p className="font-medium text-sm" style={{ color: COLORS.charcoal }}>{ev.eventName}</p>
-                  {dateTimeStr && <p className="text-xs opacity-60 mt-0.5" style={{ color: COLORS.charcoal }}>{dateTimeStr}</p>}
+                  {dateTimeStr && <p className="text-xs opacity-60 mt-0.5" style={{ color: COLORS.charcoal }}>Created: {dateTimeStr}</p>}
                 </button>
                 <div className="flex items-center gap-1 ml-3">
                   <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
@@ -177,8 +218,8 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
         </div>
       )}
 
-      {events.length === 0 && (
-        <p className="text-sm opacity-50 text-center mt-4" style={{ color: COLORS.charcoal }}>No events found on this device.</p>
+      {!loading && events.length === 0 && (
+        <p className="text-sm opacity-50 text-center mt-4" style={{ color: COLORS.charcoal }}>No events found.</p>
       )}
     </div>
   );
