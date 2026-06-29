@@ -5029,15 +5029,10 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
       setScreen("event-created");
       celebrate("✅ Event created!");
 
-      // Only try to save to Firebase if user is authenticated (not in admin setup mode)
-      if (userId !== "admin") {
-        saveEventToFirebase(newEventId, userId, configWithIds).catch((err) => {
-          console.log("Event will sync when online:", err);
-        });
-      } else {
-        // In admin setup mode - user can log in later to sync
-        console.log("Admin setup complete. Event will sync after login.");
-      }
+      // Save to Firebase (required for scorers to access from other devices/browsers)
+      saveEventToFirebase(newEventId, userId !== "admin" ? userId : "admin-setup", configWithIds).catch((err) => {
+        console.log("Event will sync when online:", err);
+      });
     } catch (err) {
       console.error("Error creating event:", err);
       celebrate("❌ Failed to create event");
