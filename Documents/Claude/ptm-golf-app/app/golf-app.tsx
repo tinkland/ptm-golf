@@ -1629,15 +1629,29 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
             </p>
           )}
           <div className="flex flex-col gap-3">
-          {COMPETITIONS.map((comp) => (
-            <div key={comp.id} className="rounded-lg p-2.5" style={{ backgroundColor: COLORS.cream, border: `1px solid ${COLORS.line}` }}>
-              <label className="flex items-center gap-2 mb-1">
-                <input type="checkbox" defaultChecked={comp.id !== "best-indexed" && comp.id !== "best-ball-teams"} style={{ accentColor: COLORS.gold }} disabled={comp.id === "stableford" || roundTab > 0} />
-                <span className="text-sm font-medium" style={{ color: COLORS.charcoal }}>{comp.emoji} {comp.name}</span>
-              </label>
-              <p className="text-xs opacity-60 ml-6" style={{ color: COLORS.charcoal }}>{comp.description}</p>
-            </div>
-          ))}
+          {COMPETITIONS.map((comp) => {
+            const isSelected = rounds[roundTab]?.competitions?.includes(comp.id) || (comp.id === "stableford");
+            return (
+              <div key={comp.id} className="rounded-lg p-2.5" style={{ backgroundColor: COLORS.cream, border: `1px solid ${COLORS.line}` }}>
+                <label className="flex items-center gap-2 mb-1">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      const newComps = e.target.checked
+                        ? [...(rounds[roundTab]?.competitions || []), comp.id]
+                        : (rounds[roundTab]?.competitions || []).filter(c => c !== comp.id);
+                      setRounds(rounds.map((r, i) => i === roundTab ? { ...r, competitions: newComps } : r));
+                    }}
+                    style={{ accentColor: COLORS.gold }}
+                    disabled={comp.id === "stableford" || roundTab > 0}
+                  />
+                  <span className="text-sm font-medium" style={{ color: COLORS.charcoal }}>{comp.emoji} {comp.name}</span>
+                </label>
+                <p className="text-xs opacity-60 ml-6" style={{ color: COLORS.charcoal }}>{comp.description}</p>
+              </div>
+            );
+          })}
           </div>
         </SectionCard>
       </div>
