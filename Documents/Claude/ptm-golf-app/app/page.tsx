@@ -96,16 +96,16 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
       // Delete from localStorage
       localStorage.removeItem(`event-${eventId}`);
 
-      // Delete from Firebase collections if user is authenticated
-      const response = await fetch('/api/delete-event', {
+      // Delete from Firebase collections
+      await fetch('/api/delete-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId }),
-      }).catch(() => null); // Silently fail if API endpoint doesn't exist yet
+      }).catch(() => null);
 
+      // Remove from local state immediately
+      setEvents(prev => prev.filter(e => e.id !== eventId));
       setDeleteConfirm(null);
-      // Refresh the page to update the event list
-      window.location.reload();
     } catch (err) {
       console.error("Delete failed:", err);
       alert("Failed to delete event. Please try again.");
