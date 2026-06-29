@@ -4406,8 +4406,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
   }, [eventId, config]);
 
   useEffect(() => {
-    if ((tab === "leaderboard" || showEndOfDay) && eventId && config) {
-      // Refresh immediately when opening leaderboard or end-of-day screen
+    if ((tab === "leaderboard" || tab === "results" || showEndOfDay) && eventId && config) {
+      // Refresh immediately when opening leaderboard, results, or end-of-day screen
       refreshAllScores();
       // Then refresh every 5 seconds while viewing (for live sync across devices)
       const interval = setInterval(refreshAllScores, 5000);
