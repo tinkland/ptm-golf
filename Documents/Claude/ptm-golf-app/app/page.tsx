@@ -5,7 +5,7 @@ import AuthUI from './auth-ui';
 import GolfApp from './golf-app';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, doc, deleteDoc } from 'firebase/firestore';
 
 const DEFAULT_LOGO = "⛳";
 const COLORS = {
@@ -93,18 +93,17 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
 
   const handleDeleteEvent = async (eventId: string, eventName: string) => {
     try {
-      // Delete from Firebase first
-      const response = await fetch('/api/delete-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete from Firebase: ${response.statusText}`);
+      // Delete from Firebase collections
+      const collectionsToDelete = ['events', 'games', 'scores', 'signatures'];
+      for (const collectionName of collectionsToDelete) {
+        try {
+          await deleteDoc(doc(db, collectionName, eventId));
+        } catch (err) {
+          console.warn(`Could not delete from ${collectionName}:`, err);
+        }
       }
 
-      // Only after Firebase deletion succeeds, delete from localStorage
+      // Delete from localStorage
       localStorage.removeItem(`event-${eventId}`);
 
       // Remove from local state
