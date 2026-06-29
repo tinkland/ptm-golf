@@ -3565,24 +3565,28 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
 function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScores, eventId, gameEntries = [] }) {
   const [selectedRoundId, setSelectedRoundId] = useState(config.rounds[0]?.id);
   const [freshScores, setFreshScores] = useState(null);
+  const [freshGameEntries, setFreshGameEntries] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
   const allowance = config.allowance.stableford;
   const selectedRound = config.rounds.find((r) => r.id === selectedRoundId);
 
-  // Refresh scores from Firebase when round is selected or component loads
+  // Refresh scores and game entries from Firebase when round is selected or component loads
   useEffect(() => {
     const refreshScoresFromFirebase = async () => {
       if (!eventId || !selectedRoundId || !selectedRound) return;
       try {
         const merged = { playerScores: {}, jokerHoles: {} };
-        // Load scores from all groups for this round
+        const allEntries: any[] = [];
         for (const group of selectedRound.groups) {
           const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
           if (scores?.playerScores) Object.assign(merged.playerScores, scores.playerScores);
           if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
+          const entries = await getGameEntriesFromFirebase(eventId, selectedRoundId, group.id);
+          allEntries.push(...entries);
         }
         setFreshScores(merged);
+        setFreshGameEntries(allEntries);
       } catch (err) {
         console.warn("Could not refresh scores from Firebase:", err);
       }
@@ -3607,12 +3611,16 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
         try {
           if (eventId && selectedRoundId && selectedRound) {
             const merged = { playerScores: {}, jokerHoles: {} };
+            const allEntries: any[] = [];
             for (const group of selectedRound.groups) {
               const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
               if (scores?.playerScores) Object.assign(merged.playerScores, scores.playerScores);
               if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
+              const entries = await getGameEntriesFromFirebase(eventId, selectedRoundId, group.id);
+              allEntries.push(...entries);
             }
             setFreshScores(merged);
+            setFreshGameEntries(allEntries);
           }
         } catch (err) {
           console.warn("Swipe refresh failed:", err);
@@ -3686,9 +3694,10 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
   };
 
   const scores = getScoresForRound(selectedRoundId);
+  const localGameEntries = freshGameEntries.length > 0 ? freshGameEntries : gameEntries;
 
   const getGameWinner = (gameId: string, holeNum: number) => {
-    const entries = gameEntries.filter((e) => e.gameId === gameId && e.hole === holeNum);
+    const entries = localGameEntries.filter((e) => e.gameId === gameId && e.hole === holeNum);
     if (gameId === "sandy") {
       return config.players.find((p) => entries.some((e) => e.playerId === p.id && e.save))?.name;
     }
@@ -3704,12 +3713,16 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
     setIsRefreshing(true);
     try {
       const merged = { playerScores: {}, jokerHoles: {} };
+      const allEntries: any[] = [];
       for (const group of selectedRound.groups) {
         const scores = await getScoresFromFirebase(eventId, selectedRoundId, group.id);
         if (scores?.playerScores) Object.assign(merged.playerScores, scores.playerScores);
         if (scores?.jokerHoles) Object.assign(merged.jokerHoles, scores.jokerHoles);
+        const entries = await getGameEntriesFromFirebase(eventId, selectedRoundId, group.id);
+        allEntries.push(...entries);
       }
       setFreshScores(merged);
+      setFreshGameEntries(allEntries);
     } catch (err) {
       console.warn("Manual refresh failed:", err);
     } finally {
@@ -3815,17 +3828,43 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
             <div className="mb-4">
               <h3 className="text-sm font-medium mb-2" style={{ color: COLORS.green }}>Games</h3>
               <div className="flex flex-col gap-2">
-                {/* Best Ball Teams — shown as "game was played" card, results on Board tab */}
-                {selectedRound.bestBallTeams?.length > 0 && (
-                  <div className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
-                    <p className="text-xs font-medium" style={{ color: COLORS.green }}>🤝 Best Ball Teams</p>
-                    <p className="text-xs mt-1 opacity-60">Teams: {selectedRound.bestBallTeams.map((t: any) => t.name || "Team").join(" · ")}</p>
-                  </div>
-                )}
+                {/* Best Ball Teams — compute Stableford scores per team */}
+                {selectedRound.bestBallTeams?.length > 0 && (() => {
+                  const teamScores = selectedRound.bestBallTeams.map((team: any) => {
+                    let score = 0;
+                    selectedRound.course.holes.forEach((hole: any) => {
+                      let bestPts: number | null = null;
+                      (team.players || []).forEach((playerId: string) => {
+                        const player = config.players.find((p: any) => p.id === playerId);
+                        const g = scores?.playerScores?.[playerId]?.[hole.number];
+                        if (g !== "" && g != null && player) {
+                          const ph = getPH(selectedRound.course, player, allowance, config.handicapSystem);
+                          const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+                          if (pts !== null && (bestPts === null || pts > bestPts)) bestPts = pts;
+                        }
+                      });
+                      if (bestPts !== null) score += bestPts;
+                    });
+                    return { team, score };
+                  }).sort((a: any, b: any) => b.score - a.score);
+                  return (
+                    <div className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
+                      <p className="text-xs font-medium mb-2" style={{ color: COLORS.green }}>🤝 Best Ball Teams</p>
+                      {teamScores.map(({ team, score }: any, idx: number) => (
+                        <div key={team.id} className="flex justify-between text-xs mt-1">
+                          <span style={{ color: COLORS.charcoal }}>{team.name}</span>
+                          <span style={{ color: idx === 0 && score > 0 ? COLORS.gold : COLORS.charcoal, fontWeight: idx === 0 && score > 0 ? "600" : "normal" }}>
+                            {score > 0 ? `${score} pts` : "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {selectedRound.games?.map((game) => {
                   const savedWinners = selectedRound.gameWinners || {};
 
-                  // Per-hole on-course games
+                  // Per-hole on-course games (CTP, long drive on multiple holes, etc.)
                   if (game.holes && game.holes.length > 1) {
                     return (
                       <div key={game.id} className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
@@ -3846,22 +3885,91 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
                     );
                   }
 
-                  // Single-hole or daily games
-                  let winnerId = savedWinners[`oncourse-${game.templateId}`] || savedWinners[`daily-${game.templateId}`];
-                  // Sandy: derive from gameEntries if no saved winner
-                  if (!winnerId && game.templateId === "sandy") {
-                    for (const group of selectedRound.groups) {
-                      for (const playerId of group.playerIds) {
-                        if (gameEntries.some((e) => e.playerId === playerId && e.gameId === "sandy" && e.save)) {
-                          winnerId = playerId;
-                          break;
-                        }
-                      }
-                      if (winnerId) break;
-                    }
+                  // Sandy Saver — show per-player save counts from game entries
+                  if (game.templateId === "sandy") {
+                    const savedWinnerId = savedWinners[`oncourse-sandy`] || savedWinners[`daily-sandy`];
+                    const roundPlayerIds = selectedRound.groups.flatMap((g) => g.playerIds);
+                    const saveCounts = config.players
+                      .filter((p) => roundPlayerIds.includes(p.id))
+                      .map((p) => ({
+                        player: p,
+                        count: localGameEntries.filter((e) => e.playerId === p.id && e.gameId === "sandy" && e.save).length,
+                      }))
+                      .filter((x) => x.count > 0)
+                      .sort((a, b) => b.count - a.count);
+                    return (
+                      <div key={game.id} className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
+                        <p className="text-xs font-medium mb-2" style={{ color: COLORS.green }}>🏖️ Sandy Saver</p>
+                        {saveCounts.length > 0 ? (
+                          saveCounts.map(({ player, count }) => (
+                            <div key={player.id} className="flex justify-between text-xs mt-1">
+                              <span style={{ color: COLORS.charcoal }}>{player.name}</span>
+                              <span style={{ color: COLORS.gold, fontWeight: "600" }}>{count} save{count !== 1 ? "s" : ""}</span>
+                            </div>
+                          ))
+                        ) : savedWinnerId ? (
+                          <div className="flex justify-between text-xs">
+                            <span style={{ color: COLORS.charcoal }}>Winner</span>
+                            <span style={{ color: COLORS.gold, fontWeight: "600" }}>{config.players.find((p) => p.id === savedWinnerId)?.name || "—"}</span>
+                          </div>
+                        ) : (
+                          <p className="text-xs opacity-50" style={{ color: COLORS.charcoal }}>No saves recorded</p>
+                        )}
+                      </div>
+                    );
                   }
-                  const winnerName = winnerId ? config.players.find((p) => p.id === winnerId)?.name : null;
 
+                  // Snake — show 3-putt tracker and final holder
+                  if (game.templateId === "snake") {
+                    const savedHolderId = savedWinners[`oncourse-snake`] || savedWinners[`daily-snake`];
+                    const snakeEntries = localGameEntries.filter((e) => e.gameId === "snake" && e.threePutts);
+                    const snakeByPlayer: Record<string, number[]> = {};
+                    snakeEntries.forEach((e) => {
+                      if (!snakeByPlayer[e.playerId]) snakeByPlayer[e.playerId] = [];
+                      snakeByPlayer[e.playerId].push(e.hole);
+                    });
+                    let holderId = savedHolderId;
+                    if (!holderId && snakeEntries.length > 0) {
+                      const last = snakeEntries.reduce((a, b) => (b.hole > a.hole ? b : a));
+                      holderId = last.playerId;
+                    }
+                    const roundPlayers = config.players.filter((p) =>
+                      selectedRound.groups.some((g) => g.playerIds.includes(p.id))
+                    );
+                    return (
+                      <div key={game.id} className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
+                        <p className="text-xs font-medium mb-2" style={{ color: COLORS.green }}>🐍 The Snake</p>
+                        {holderId && (
+                          <div className="flex justify-between text-xs mb-1">
+                            <span style={{ color: COLORS.charcoal }}>Final holder</span>
+                            <span style={{ color: COLORS.gold, fontWeight: "600" }}>{config.players.find((p) => p.id === holderId)?.name || "—"}</span>
+                          </div>
+                        )}
+                        {snakeEntries.length > 0 && (
+                          <>
+                            <p className="text-xs font-medium mt-2 mb-1 opacity-70" style={{ color: COLORS.charcoal }}>3-Putt tracker</p>
+                            {roundPlayers.map((p) => {
+                              const holes = (snakeByPlayer[p.id] || []).sort((a, b) => a - b);
+                              if (holes.length === 0) return null;
+                              return (
+                                <div key={p.id} className="flex justify-between text-xs mt-1">
+                                  <span style={{ color: COLORS.charcoal }}>{p.name}</span>
+                                  <span style={{ color: COLORS.charcoal }}>{holes.length}× · holes {holes.join(", ")}</span>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+                        {!holderId && snakeEntries.length === 0 && (
+                          <p className="text-xs opacity-50" style={{ color: COLORS.charcoal }}>No 3-putts recorded</p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Single-hole or daily games (long drive, longest putt, joker, etc.)
+                  const winnerId = savedWinners[`oncourse-${game.templateId}`] || savedWinners[`daily-${game.templateId}`];
+                  const winnerName = winnerId ? config.players.find((p) => p.id === winnerId)?.name : null;
                   return (
                     <div key={game.id} className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
                       <div className="flex items-center justify-between">
