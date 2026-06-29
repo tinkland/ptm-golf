@@ -877,7 +877,7 @@ function SignaturePad({ onSigned, sigKey }: { onSigned: (dataUrl: string | null)
 }
 
 // Collects one signature per player in the group, then calls onComplete
-function SignatureCaptureScreen({ config, round, groupId, onComplete }: { config: any; round: any; groupId: string; onComplete: (sigs: any[]) => void }) {
+function SignatureCaptureScreen({ config, round, groupId, onComplete, scores = {}, allowance = 95, handicapSystem = "WHS" }: { config: any; round: any; groupId: string; onComplete: (sigs: any[]) => void; scores?: any; allowance?: number; handicapSystem?: string }) {
   const group = round?.groups?.find((g: any) => g.id === groupId);
   const players = (group?.playerIds || []).map((pid: string) => config.players.find((p: any) => p.id === pid)).filter(Boolean);
   const [idx, setIdx] = useState(0);
@@ -886,6 +886,23 @@ function SignatureCaptureScreen({ config, round, groupId, onComplete }: { config
 
   const player = players[idx];
   if (!player) return null;
+
+  // Calculate player's score for this round
+  const playerScores = scores?.playerScores?.[player.id] || {};
+  const jokerHole = scores?.jokerHoles?.[player.id];
+  let totalPts = 0, grossScore = 0;
+  (round?.course?.holes || []).forEach((h: any) => {
+    const g = playerScores[h.number];
+    if (g !== "" && g != null) {
+      grossScore += g;
+      const ph = getPH(round.course, player, allowance, handicapSystem);
+      const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
+      if (pts != null) {
+        const isJoker = h.number === jokerHole && jokerHole !== "NA";
+        totalPts += isJoker ? pts * 2 : pts;
+      }
+    }
+  });
 
   function confirm() {
     if (!currentSig) return;
@@ -907,7 +924,20 @@ function SignatureCaptureScreen({ config, round, groupId, onComplete }: { config
         ))}
       </div>
       <p className="text-xs font-medium mb-1 opacity-60" style={{ color: COLORS.charcoal }}>Player {idx + 1} of {players.length}</p>
-      <h2 className="text-2xl font-bold mb-1" style={{ color: COLORS.green }}>{player.name}</h2>
+      <h2 className="text-2xl font-bold mb-3" style={{ color: COLORS.green }}>{player.name}</h2>
+
+      {/* Score Summary */}
+      <div className="rounded-lg p-3 mb-4" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm" style={{ color: COLORS.charcoal }}>Stableford Points:</span>
+          <span className="text-lg font-bold" style={{ color: COLORS.gold }}>{totalPts}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-sm" style={{ color: COLORS.charcoal }}>Gross Score:</span>
+          <span className="text-lg font-bold" style={{ color: COLORS.charcoal }}>{grossScore}</span>
+        </div>
+      </div>
+
       <p className="text-sm mb-6 opacity-60" style={{ color: COLORS.charcoal }}>
         Please sign below to confirm your {round?.label || "round"} scorecard
       </p>
@@ -5393,6 +5423,9 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
           config={config}
           round={activeRound}
           groupId={currentGroupId}
+          scores={scores}
+          allowance={config?.allowance?.stableford || 95}
+          handicapSystem={config?.handicapSystem || "WHS"}
           onComplete={async (sigs) => {
             setShowSignatureCapture(false);
             if (eventId && activeRoundId && currentGroupId) {
