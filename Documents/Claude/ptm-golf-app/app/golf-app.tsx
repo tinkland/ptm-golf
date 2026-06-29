@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Minus, X, Target, RefreshCw, Pencil, Check, Swords, LogOut, BarChart3 } from "lucide-react";
+import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Minus, X, Target, RefreshCw, Pencil, Check, CheckCircle, Swords, LogOut, BarChart3 } from "lucide-react";
 import { QRCodeSVG as QRCode } from "qrcode.react";
 import { useAuth } from "./auth-provider";
 import { db } from "@/lib/firebase";
@@ -656,6 +656,120 @@ async function getGameEntriesFromFirebase(eventId: string, roundId: string, grou
   const gameId = `${eventId}_${roundId}_${groupId}_games`;
   const docSnap = await getDoc(doc(db, "games", gameId));
   return docSnap.exists() ? docSnap.data()?.entries || [] : [];
+}
+
+async function saveSignaturesToFirebase(eventId: string, roundId: string, groupId: string, sigs: any[]) {
+  const sigId = `${eventId}_${roundId}_${groupId}_sigs`;
+  await setDoc(doc(db, "signatures", sigId), { eventId, roundId, groupId, signatures: sigs, savedAt: new Date() });
+}
+
+async function getSignaturesFromFirebase(eventId: string, roundId: string, groupId: string) {
+  const sigId = `${eventId}_${roundId}_${groupId}_sigs`;
+  const docSnap = await getDoc(doc(db, "signatures", sigId));
+  return docSnap.exists() ? (docSnap.data()?.signatures || []) : [];
+}
+
+// Signature pad — canvas with mouse + touch support
+function SignaturePad({ onSigned, sigKey }: { onSigned: (dataUrl: string | null) => void; sigKey?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height);
+    onSigned(null);
+  }, [sigKey]);
+
+  function pos(e: any, canvas: HTMLCanvasElement) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches?.[0] ?? e;
+    return { x: (src.clientX - r.left) * (canvas.width / r.width), y: (src.clientY - r.top) * (canvas.height / r.height) };
+  }
+
+  function start(e: React.MouseEvent | React.TouchEvent) {
+    e.preventDefault();
+    const canvas = canvasRef.current!;
+    drawing.current = true;
+    const { x, y } = pos(e, canvas);
+    const ctx = canvas.getContext("2d")!;
+    ctx.beginPath(); ctx.moveTo(x, y);
+  }
+
+  function move(e: React.MouseEvent | React.TouchEvent) {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+    ctx.strokeStyle = COLORS.green; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    const { x, y } = pos(e, canvas);
+    ctx.lineTo(x, y); ctx.stroke();
+    onSigned(canvas.toDataURL("image/png"));
+  }
+
+  function end() { drawing.current = false; }
+
+  function clear() {
+    const canvas = canvasRef.current!;
+    canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height);
+    onSigned(null);
+  }
+
+  return (
+    <div>
+      <canvas ref={canvasRef} width={680} height={200}
+        className="w-full rounded-xl border-2" style={{ borderColor: COLORS.line, touchAction: "none", background: "white" }}
+        onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+        onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+      />
+      <button onClick={clear} className="text-xs mt-1.5 opacity-50 underline" style={{ color: COLORS.charcoal }}>Clear</button>
+    </div>
+  );
+}
+
+// Collects one signature per player in the group, then calls onComplete
+function SignatureCaptureScreen({ config, round, groupId, onComplete }: { config: any; round: any; groupId: string; onComplete: (sigs: any[]) => void }) {
+  const group = round?.groups?.find((g: any) => g.id === groupId);
+  const players = (group?.playerIds || []).map((pid: string) => config.players.find((p: any) => p.id === pid)).filter(Boolean);
+  const [idx, setIdx] = useState(0);
+  const [collected, setCollected] = useState<any[]>([]);
+  const [currentSig, setCurrentSig] = useState<string | null>(null);
+
+  const player = players[idx];
+  if (!player) return null;
+
+  function confirm() {
+    if (!currentSig) return;
+    const updated = [...collected, { playerId: player.id, playerName: player.name, signature: currentSig, timestamp: Date.now() }];
+    setCollected(updated);
+    setCurrentSig(null);
+    if (idx + 1 >= players.length) {
+      onComplete(updated);
+    } else {
+      setIdx(idx + 1);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col max-w-md mx-auto px-4 py-10" style={{ backgroundColor: COLORS.cream }}>
+      <div className="flex items-center gap-2 mb-6">
+        {players.map((_: any, i: number) => (
+          <div key={i} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: i < idx ? COLORS.green : i === idx ? COLORS.gold : COLORS.line }} />
+        ))}
+      </div>
+      <p className="text-xs font-medium mb-1 opacity-60" style={{ color: COLORS.charcoal }}>Player {idx + 1} of {players.length}</p>
+      <h2 className="text-2xl font-bold mb-1" style={{ color: COLORS.green }}>{player.name}</h2>
+      <p className="text-sm mb-6 opacity-60" style={{ color: COLORS.charcoal }}>
+        Please sign below to confirm your {round?.label || "round"} scorecard
+      </p>
+      <SignaturePad onSigned={setCurrentSig} sigKey={idx} />
+      <button onClick={confirm} disabled={!currentSig}
+        className="mt-6 w-full py-3 rounded-xl font-medium text-white"
+        style={{ backgroundColor: COLORS.green, opacity: currentSig ? 1 : 0.35 }}>
+        {idx + 1 >= players.length ? "Submit All Signatures" : "Confirm & Next Player →"}
+      </button>
+    </div>
+  );
 }
 
 // UI Components
@@ -3621,12 +3735,77 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
   );
 }
 
+// Signature viewer for admin — loads all signatures for all rounds/groups
+function AdminSignaturesScreen({ config, eventId, onBack }: { config: any; eventId: string; onBack: () => void }) {
+  const [data, setData] = useState<Record<string, any[]>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const result: Record<string, any[]> = {};
+      for (const round of config.rounds || []) {
+        for (const group of round.groups || []) {
+          const key = `${round.id}__${group.id}`;
+          try {
+            const sigs = await getSignaturesFromFirebase(eventId, round.id, group.id);
+            if (sigs.length > 0) result[key] = sigs;
+          } catch {}
+        }
+      }
+      setData(result);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-6" style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="p-2 rounded-lg hover:bg-gray-100">
+          <ChevronLeft size={24} style={{ color: COLORS.charcoal }} />
+        </button>
+        <h2 className="font-display text-2xl" style={{ color: COLORS.green }}>Signatures</h2>
+      </div>
+      {loading && <p className="text-sm opacity-60 text-center" style={{ color: COLORS.charcoal }}>Loading…</p>}
+      {!loading && Object.keys(data).length === 0 && (
+        <p className="text-sm opacity-60 text-center mt-8" style={{ color: COLORS.charcoal }}>No signatures collected yet.</p>
+      )}
+      {!loading && config.rounds?.map((round: any) => (
+        <div key={round.id} className="mb-6">
+          <p className="text-xs font-semibold mb-2 uppercase tracking-wide opacity-60" style={{ color: COLORS.charcoal }}>{round.label}</p>
+          {round.groups?.map((group: any) => {
+            const sigs = data[`${round.id}__${group.id}`] || [];
+            if (!sigs.length) return null;
+            return (
+              <div key={group.id} className="mb-4">
+                <p className="text-xs font-medium mb-2" style={{ color: COLORS.charcoal }}>{group.name}</p>
+                <div className="flex flex-col gap-3">
+                  {sigs.map((s: any, i: number) => (
+                    <div key={i} className="rounded-xl p-3 bg-white" style={{ border: `1px solid ${COLORS.line}` }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium" style={{ color: COLORS.charcoal }}>{s.playerName}</p>
+                        <p className="text-[10px] opacity-50">{s.timestamp ? new Date(s.timestamp).toLocaleTimeString() : ""}</p>
+                      </div>
+                      {s.signature && <img src={s.signature} className="w-full rounded-lg" style={{ border: `1px solid ${COLORS.line}` }} alt={`${s.playerName} signature`} />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // AdminPanel Component — hub for mid-event admin actions
-function AdminPanel({ onGoToSetup, onGoToRounds, onGoToPlayers, onBack }) {
+function AdminPanel({ onGoToSetup, onGoToRounds, onGoToPlayers, onViewSignatures, config, onBack }) {
   const items = [
     { label: "Edit Event Setup", sub: "Courses, games, allowances, links", icon: Settings, action: onGoToSetup },
     { label: "Manage Rounds", sub: "Add, delete or reorder rounds", icon: Trophy, action: onGoToRounds },
     { label: "Manage Players", sub: "Withdraw, replace or add players", icon: Users, action: onGoToPlayers },
+    ...(config?.signaturesRequired ? [{ label: "View Signatures", sub: "Player scorecard signatures by round", icon: CheckCircle, action: onViewSignatures }] : []),
   ];
   return (
     <div className="max-w-md mx-auto px-4 py-6" style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }}>
@@ -3917,6 +4096,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
   const [gameEntries, setGameEntries] = useState<any[]>([]);
   const [allScoresByRound, setAllScoresByRound] = useState({});
   const [showEndOfRoundGames, setShowEndOfRoundGames] = useState(false);
+  const [showSignatureCapture, setShowSignatureCapture] = useState(false);
+  const [showAdminSignatures, setShowAdminSignatures] = useState(false);
   const [scoreHole, setScoreHole] = useState(1);
   const [showEndOfDay, setShowEndOfDay] = useState(false);
   const isLoadingRoundRef = useRef(false);
@@ -4090,7 +4271,11 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
     }
 
     isLoadingRoundRef.current = false;
-    setShowEndOfRoundGames(true); // Show games entry screen — user clicks Finish there to continue
+    if (config?.signaturesRequired) {
+      setShowSignatureCapture(true);
+    } else {
+      setShowEndOfRoundGames(true);
+    }
   };
 
   // Step 2: called from EndOfRoundGamesScreen "Finish Round" — routes to next screen
@@ -4365,11 +4550,22 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
   }
 
   if (screen === "admin-panel") {
+    if (showAdminSignatures && config && eventId) {
+      return (
+        <AdminSignaturesScreen
+          config={config}
+          eventId={eventId}
+          onBack={() => setShowAdminSignatures(false)}
+        />
+      );
+    }
     return (
       <AdminPanel
+        config={config}
         onGoToSetup={() => { setSetupReturnTo("admin-panel"); setScreen("setup"); }}
         onGoToRounds={() => setScreen("rounds-admin")}
         onGoToPlayers={() => setScreen("players-admin")}
+        onViewSignatures={() => setShowAdminSignatures(true)}
         onBack={() => setScreen("main")}
       />
     );
@@ -4530,6 +4726,19 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
             setGroupSelections({ ...groupSelections, [activeRoundId]: gid });
           }}
           onCancel={() => {}}
+        />
+      ) : showSignatureCapture ? (
+        <SignatureCaptureScreen
+          config={config}
+          round={activeRound}
+          groupId={currentGroupId}
+          onComplete={async (sigs) => {
+            setShowSignatureCapture(false);
+            if (eventId && activeRoundId && currentGroupId) {
+              saveSignaturesToFirebase(eventId, activeRoundId, currentGroupId, sigs).catch(() => {});
+            }
+            setShowEndOfRoundGames(true);
+          }}
         />
       ) : showEndOfRoundGames ? (
         <EndOfRoundGamesScreen
