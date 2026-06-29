@@ -2892,6 +2892,31 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
           </button>
         )}
         <button
+          onClick={() => {
+            const exportData = {
+              config,
+              allScoresByRound: propAllScoresByRound,
+              gameEntries,
+            };
+            const json = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([json], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            const safeName = (config?.eventName || "ptm-golf-event").replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const timeStr = new Date().toISOString().slice(11, 19).replace(/:/g, "-");
+            a.download = `${safeName}-checkpoint-${dateStr}-${timeStr}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            alert("Scores saved to date — you can re-import if needed.");
+          }}
+          className="w-full py-3 rounded-lg font-medium text-sm"
+          style={{ backgroundColor: COLORS.cream, color: COLORS.charcoal, border: `1px solid ${COLORS.line}` }}
+        >
+          💾 Save Scores to Date
+        </button>
+        <button
           onClick={handleComplete}
           className="w-full py-3 rounded-lg font-medium text-sm"
           style={{ backgroundColor: COLORS.green, color: "white" }}
