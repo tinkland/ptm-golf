@@ -205,9 +205,16 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
                     📱
                   </button>
                   <button
-                    onClick={() => setDeleteConfirm(ev.id)}
-                    className="p-1.5 rounded-lg hover:opacity-70 flex-shrink-0"
-                    style={{ color: COLORS.flag }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteConfirm(ev.id);
+                    }}
+                    onTouchEnd={(e) => {
+                      e.stopPropagation();
+                      setDeleteConfirm(ev.id);
+                    }}
+                    className="p-2 rounded-lg hover:opacity-70 active:opacity-50 flex-shrink-0 touch-none"
+                    style={{ color: COLORS.flag, minWidth: "44px", minHeight: "44px", display: "flex", alignItems: "center", justifyContent: "center" }}
                     title="Delete event">
                     🗑️
                   </button>
