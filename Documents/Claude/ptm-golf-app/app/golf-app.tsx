@@ -669,6 +669,155 @@ async function getSignaturesFromFirebase(eventId: string, roundId: string, group
   return docSnap.exists() ? (docSnap.data()?.signatures || []) : [];
 }
 
+// ── Email HTML builders ──────────────────────────────────────────────────────
+
+function buildEventDetailsEmail({ eventName, adminLogo, rounds, players, handicapSystem, links }: any): string {
+  const logoHtml = adminLogo && (adminLogo.startsWith("data:") || adminLogo.startsWith("http"))
+    ? `<img src="${adminLogo}" style="max-height:80px;max-width:200px;object-fit:contain;margin-bottom:12px;" alt="Logo" />`
+    : `<div style="font-size:48px;margin-bottom:8px;">${adminLogo || "⛳"}</div>`;
+
+  const roundsHtml = (rounds || []).map((round: any) => {
+    const dateStr = round.date ? new Date(round.date).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+    const groupsHtml = (round.groups || []).map((group: any) => {
+      const groupPlayers = (group.playerIds || []).map((pid: string) => players?.find((p: any) => p.id === pid)?.name).filter(Boolean).join(", ");
+      return `
+        <tr>
+          <td style="padding:6px 12px;font-weight:600;color:#1F3D2B;">${group.name}${group.teeTime ? ` — ${group.teeTime}` : ""}</td>
+          <td style="padding:6px 12px;color:#2A2622;">${groupPlayers || "—"}</td>
+        </tr>`;
+    }).join("");
+    return `
+      <div style="margin:24px 0;background:white;border-radius:12px;padding:20px;border:1px solid #D8CFB8;">
+        <h3 style="margin:0 0 4px;color:#1F3D2B;">${round.label}${dateStr ? ` — ${dateStr}` : ""}</h3>
+        ${round.course?.name ? `<p style="margin:0 0 12px;color:#666;font-size:13px;">📍 ${round.course.name}</p>` : ""}
+        ${groupsHtml ? `<table style="width:100%;border-collapse:collapse;">${groupsHtml}</table>` : ""}
+      </div>`;
+  }).join("");
+
+  const linksHtml = (links || []).filter((l: any) => l.url).map((l: any) =>
+    `<a href="${l.url}" style="display:inline-block;margin:4px 8px 4px 0;padding:6px 14px;background:#E9EFE5;color:#1F3D2B;border-radius:8px;text-decoration:none;font-size:13px;">${l.label} →</a>`
+  ).join("");
+
+  return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#F6F1E4;">
+      <div style="text-align:center;margin-bottom:24px;">${logoHtml}</div>
+      <h1 style="color:#1F3D2B;margin:0 0 8px;">${eventName}</h1>
+      <p style="color:#2A2622;margin:0 0 24px;font-size:15px;">
+        Welcome! We're looking forward to seeing you on the course. Below are all the details you need for our upcoming golf event.
+      </p>
+      ${roundsHtml}
+      <p style="color:#2A2622;font-size:14px;margin:24px 0 8px;">
+        Handicap system: <strong>${handicapSystem === "ga" ? "Australian (GA)" : "International (WHS)"}</strong>
+      </p>
+      ${linksHtml ? `<div style="margin-top:16px;">${linksHtml}</div>` : ""}
+      <hr style="margin:32px 0;border:none;border-top:1px solid #D8CFB8;" />
+      <p style="color:#999;font-size:12px;text-align:center;">Sent via PTM Golf · Track your scores in real-time</p>
+    </div>`;
+}
+
+function buildTournamentResultsEmail({ eventName, adminLogo, rounds, players, allScoresByRound, config }: any): string {
+  const logoHtml = adminLogo && (adminLogo.startsWith("data:") || adminLogo.startsWith("http"))
+    ? `<img src="${adminLogo}" style="max-height:60px;max-width:160px;object-fit:contain;" alt="Logo" />`
+    : `<div style="font-size:40px;">${adminLogo || "⛳"}</div>`;
+
+  const allowance = config?.allowance?.stableford ?? 95;
+  const hSystem = config?.handicapSystem ?? "whs";
+
+  // Build lookup: roundId → groupId → full scores object
+  const totals: Record<string, { name: string; rounds: Record<string, { pts: number; gross: number; ph: number }>; total: number }> = {};
+  (players || []).forEach((p: any) => { totals[p.id] = { name: p.name, rounds: {}, total: 0 }; });
+
+  (rounds || []).forEach((round: any) => {
+    const roundScores = allScoresByRound?.[round.id] || {};
+    (round.groups || []).forEach((group: any) => {
+      const groupScoresObj = roundScores[group.id] || {};
+      (group.playerIds || []).forEach((pid: string) => {
+        if (!totals[pid]) return;
+        const player = (players || []).find((p: any) => p.id === pid);
+        if (!player) return;
+        const stats = computePlayerRoundStats(round, player, allowance, groupScoresObj, hSystem);
+        const ph = getPH(getCourseForPlayer(round, pid), player, allowance, hSystem);
+        totals[pid].rounds[round.id] = { pts: stats.dayTotal, gross: stats.gross, ph };
+        totals[pid].total += stats.dayTotal;
+      });
+    });
+  });
+
+  const ranked = Object.values(totals).sort((a, b) => b.total - a.total);
+
+  const standingsRows = ranked.map((p, i) => `
+    <tr style="background:${i % 2 === 0 ? "white" : "#F6F1E4"};">
+      <td style="padding:8px 12px;font-weight:600;color:#1F3D2B;">${i + 1}</td>
+      <td style="padding:8px 12px;color:#2A2622;">${p.name}</td>
+      ${(rounds || []).map((r: any) => {
+        const rd = p.rounds[r.id];
+        return `<td style="padding:8px 12px;text-align:center;color:#2A2622;">${rd ? `${rd.pts} pts` : "—"}</td>`;
+      }).join("")}
+      <td style="padding:8px 12px;text-align:center;font-weight:700;color:#C7972F;">${p.total} pts</td>
+    </tr>`).join("");
+
+  const standingsTable = `
+    <table style="width:100%;border-collapse:collapse;border-radius:12px;overflow:hidden;">
+      <thead>
+        <tr style="background:#1F3D2B;color:white;">
+          <th style="padding:10px 12px;text-align:left;">#</th>
+          <th style="padding:10px 12px;text-align:left;">Player</th>
+          ${(rounds || []).map((r: any) => `<th style="padding:10px 12px;text-align:center;">${r.label}</th>`).join("")}
+          <th style="padding:10px 12px;text-align:center;">Total</th>
+        </tr>
+      </thead>
+      <tbody>${standingsRows}</tbody>
+    </table>`;
+
+  // Per-round summary tables
+  const scorecardsHtml = (rounds || []).map((round: any) => {
+    const dateStr = round.date ? new Date(round.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" }) : "";
+    const playerRows = ranked.map((p: any) => {
+      const rd = p.rounds[round.id];
+      if (!rd) return "";
+      return `
+        <tr style="border-top:1px solid #D8CFB8;">
+          <td style="padding:7px 10px;color:#2A2622;font-size:13px;">${p.name}</td>
+          <td style="padding:7px 10px;text-align:center;color:#666;font-size:12px;">PH ${rd.ph}</td>
+          <td style="padding:7px 10px;text-align:center;color:#2A2622;font-size:13px;">${rd.gross}</td>
+          <td style="padding:7px 10px;text-align:center;font-weight:700;color:#C7972F;font-size:13px;">${rd.pts}</td>
+        </tr>`;
+    }).join("");
+    return `
+      <div style="margin:20px 0;background:white;border-radius:12px;overflow:hidden;border:1px solid #D8CFB8;">
+        <div style="background:#1F3D2B;padding:10px 14px;">
+          <span style="color:white;font-weight:600;">${round.label}</span>
+          ${dateStr ? `<span style="color:#aaa;font-size:12px;margin-left:8px;">${dateStr}</span>` : ""}
+          ${round.course?.name ? `<span style="color:#aaa;font-size:12px;margin-left:8px;">· ${round.course.name}</span>` : ""}
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#E9EFE5;">
+              <th style="padding:7px 10px;text-align:left;font-size:11px;color:#1F3D2B;">Player</th>
+              <th style="padding:7px 10px;text-align:center;font-size:11px;color:#1F3D2B;">PH</th>
+              <th style="padding:7px 10px;text-align:center;font-size:11px;color:#1F3D2B;">Gross</th>
+              <th style="padding:7px 10px;text-align:center;font-size:11px;color:#1F3D2B;">Points</th>
+            </tr>
+          </thead>
+          <tbody>${playerRows}</tbody>
+        </table>
+      </div>`;
+  }).join("");
+
+  return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px;margin:0 auto;padding:32px;background:#F6F1E4;">
+      <div style="text-align:center;margin-bottom:16px;">${logoHtml}</div>
+      <h1 style="color:#1F3D2B;text-align:center;margin:0 0 4px;">${eventName}</h1>
+      <p style="text-align:center;color:#666;margin:0 0 32px;font-size:14px;">Tournament Results</p>
+      <h2 style="color:#1F3D2B;margin:0 0 12px;">Overall Standings (Stableford)</h2>
+      ${standingsTable}
+      <h2 style="color:#1F3D2B;margin:32px 0 0;">Scorecards by Round</h2>
+      ${scorecardsHtml}
+      <hr style="margin:32px 0;border:none;border-top:1px solid #D8CFB8;" />
+      <p style="color:#999;font-size:12px;text-align:center;">Generated by PTM Golf</p>
+    </div>`;
+}
+
 // Signature pad — canvas with mouse + touch support
 function SignaturePad({ onSigned, sigKey }: { onSigned: (dataUrl: string | null) => void; sigKey?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -970,6 +1119,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const [allowMatch, setAllowMatch] = useState(initialConfig?.allowance?.matchplay ?? 100);
   const [handicapSystem, setHandicapSystem] = useState<'whs' | 'ga'>(initialConfig?.handicapSystem ?? 'whs');
   const [signaturesRequired, setSignaturesRequired] = useState<boolean>(initialConfig?.signaturesRequired ?? false);
+  const [adminEmail, setAdminEmail] = useState<string>(initialConfig?.adminEmail ?? "");
 
   // Update rounds when numRounds changes
   const handleNumRoundsChange = (num: number) => {
@@ -1282,6 +1432,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
       handicapSystem,
       signaturesRequired,
+      adminEmail,
       links: adminLinks,
     };
     onSave(config);
@@ -2011,6 +2162,33 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
               </div>
             </div>
 
+            <div>
+              <p className="text-xs font-medium mb-1.5" style={{ color: COLORS.charcoal }}>Admin email</p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg"
+                  style={{ border: `1px solid ${COLORS.line}` }}
+                />
+                <button
+                  onClick={async () => {
+                    if (!adminEmail) { alert("Enter your email first"); return; }
+                    const html = buildEventDetailsEmail({ eventName: eventName || "PTM Golf Event", adminLogo, rounds, players, handicapSystem, links: adminLinks });
+                    const res = await fetch("/api/send-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: adminEmail, subject: `PTM Golf — ${eventName || "Event Details"}`, html }) });
+                    if (res.ok) alert("Email sent!"); else alert("Failed to send email — check server logs.");
+                  }}
+                  className="px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0"
+                  style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
+                >
+                  Email me
+                </button>
+              </div>
+              <p className="text-[11px] mt-1 opacity-50" style={{ color: COLORS.charcoal }}>Save the event first, then use this button to email setup details</p>
+            </div>
+
             <div className="flex items-center justify-between py-1">
               <div>
                 <p className="text-xs font-medium" style={{ color: COLORS.charcoal }}>Player signatures required</p>
@@ -2093,7 +2271,7 @@ function JoinScreen({ config, round, onJoin, onEdit, onReset }) {
 }
 
 // End of Day Processing Screen
-function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allScoresByRound: propAllScoresByRound = {}, currentScores, gameEntriesData, onComplete, onBack }) {
+function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allScoresByRound: propAllScoresByRound = {}, currentScores, gameEntriesData, onComplete, onBack, eventId }) {
   const [gameWinners, setGameWinners] = useState({});
   const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({});
   const [groupMode, setGroupMode] = useState<"ascending"|"random"|"manual">("ascending");
@@ -2447,13 +2625,40 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
       )}
 
       {/* Complete Button */}
-      <button
-        onClick={handleComplete}
-        className="w-full py-3 rounded-lg font-medium text-sm"
-        style={{ backgroundColor: COLORS.green, color: "white" }}
-      >
-        {dayTwoRound ? `Complete ${dayOneRound.label} → Start ${dayTwoRound.label}` : `Complete Tournament`}
-      </button>
+      <div className="flex flex-col gap-2">
+        {!dayTwoRound && config?.adminEmail && (
+          <button
+            onClick={async () => {
+              const html = buildTournamentResultsEmail({
+                eventName: config.eventName || "PTM Golf",
+                adminLogo: config.logo || "",
+                rounds: config.rounds || [],
+                players: config.players || [],
+                allScoresByRound: propAllScoresByRound,
+                config,
+              });
+              const res = await fetch("/api/send-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ to: config.adminEmail, subject: `${config.eventName || "PTM Golf"} — Tournament Results`, html }),
+              });
+              if (res.ok) alert(`Results emailed to ${config.adminEmail}`);
+              else alert("Failed to send — please try again.");
+            }}
+            className="w-full py-3 rounded-lg font-medium text-sm"
+            style={{ backgroundColor: COLORS.goldPale, color: COLORS.gold, border: `1px solid ${COLORS.gold}` }}
+          >
+            📧 Email Tournament Results
+          </button>
+        )}
+        <button
+          onClick={handleComplete}
+          className="w-full py-3 rounded-lg font-medium text-sm"
+          style={{ backgroundColor: COLORS.green, color: "white" }}
+        >
+          {dayTwoRound ? `Complete ${dayOneRound.label} → Start ${dayTwoRound.label}` : `Complete Tournament`}
+        </button>
+      </div>
     </div>
   );
 }
@@ -4545,6 +4750,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits }: {
         gameEntriesData={gameEntries}
         onComplete={handleEndOfDayComplete}
         onBack={() => setShowEndOfDay(false)}
+        eventId={eventId}
       />
     );
   }
