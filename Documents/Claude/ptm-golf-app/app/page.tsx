@@ -317,6 +317,16 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    function onPopState() {
+      setAdminModeAfterLogin(false);
+      setOpenEventInitialTab(undefined);
+      setShowAdminHistory(true);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-green-50">
@@ -344,16 +354,6 @@ export default function Home() {
     setShowAdminHistory(false);
     setAdminModeAfterLogin(true);
   }
-
-  useEffect(() => {
-    function onPopState() {
-      setAdminModeAfterLogin(false);
-      setOpenEventInitialTab(undefined);
-      setShowAdminHistory(true);
-    }
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
 
   if (!user) {
     if (showAdminHistory) {
