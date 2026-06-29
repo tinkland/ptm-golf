@@ -2779,27 +2779,36 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
             {(() => {
               const teamScores = teams.map((team) => {
                 let teamScore = 0;
-                dayOneRound.course?.holes?.forEach((hole) => {
-                  let bestHoleScore = null;
-                  team.players.forEach((playerId) => {
-                    const group = getPlayerGroup(dayOneRound, playerId);
-                    let so = null;
-                    if (group && allScores && allScores[group.id]) {
-                      so = allScores[group.id];
-                    }
-                    const player = config.players.find(p => p.id === playerId);
-                    if (so && player) {
-                      const g = so.playerScores?.[playerId]?.[hole.number];
-                      if (g !== "" && g != null) {
-                        const ph = getPH(dayOneRound.course, player, allowance, config.handicapSystem);
-                        const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
-                        if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
-                          bestHoleScore = pts;
+                // Get all rounds up to and including dayOneRound
+                const roundsToInclude = config.rounds.filter(r => {
+                  const dayOneIdx = config.rounds.findIndex(rr => rr.id === dayOneRound.id);
+                  const rIdx = config.rounds.findIndex(rr => rr.id === r.id);
+                  return rIdx <= dayOneIdx;
+                });
+                // Calculate cumulative Best Ball scores across all completed rounds
+                roundsToInclude.forEach((round) => {
+                  round.course?.holes?.forEach((hole) => {
+                    let bestHoleScore = null;
+                    team.players.forEach((playerId) => {
+                      const group = getPlayerGroup(round, playerId);
+                      let so = null;
+                      if (group && allScores && allScores[round.id] && allScores[round.id][group.id]) {
+                        so = allScores[round.id][group.id];
+                      }
+                      const player = config.players.find(p => p.id === playerId);
+                      if (so && player) {
+                        const g = so.playerScores?.[playerId]?.[hole.number];
+                        if (g !== "" && g != null) {
+                          const ph = getPH(round.course, player, allowance, config.handicapSystem);
+                          const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+                          if (bestHoleScore === null || (pts !== null && pts > bestHoleScore)) {
+                            bestHoleScore = pts;
+                          }
                         }
                       }
-                    }
+                    });
+                    if (bestHoleScore !== null) teamScore += bestHoleScore;
                   });
-                  if (bestHoleScore !== null) teamScore += bestHoleScore;
                 });
                 return { team, teamScore };
               }).sort((a, b) => b.teamScore - a.teamScore);
@@ -3786,7 +3795,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
 
   return (
     <div className="px-4 py-4 pb-24">
-      <h2 className="font-display text-xl mb-3" style={{ color: COLORS.green }}>Leaderboard</h2>
+      <h2 className="font-display text-xl mb-3" style={{ color: COLORS.green }}>Round Scores by Group</h2>
       <div className="flex gap-1 mb-3">
         {config.rounds.map((r) => (
           <button key={r.id} onClick={() => setView(r.id)} className="flex-1 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: view === r.id ? (r.excludeFromOverall ? COLORS.flag : COLORS.green) : (r.excludeFromOverall ? COLORS.flagPale : "white"), color: view === r.id ? "white" : (r.excludeFromOverall ? COLORS.flag : COLORS.charcoal), border: `1px solid ${r.excludeFromOverall ? COLORS.flag : COLORS.line}` }}>
@@ -3798,7 +3807,7 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
         </button>
       </div>
       <div className="flex gap-1 mb-3">
-        {COMPETITIONS.map((comp) => (
+        {COMPETITIONS.filter((comp) => comp.id !== "best-indexed" || view === "overall").map((comp) => (
           <button key={comp.id} onClick={() => setCompetition(comp.id)} className="flex-1 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: competition === comp.id ? COLORS.gold : "white", color: competition === comp.id ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}>
             {comp.emoji} {comp.name}
           </button>
@@ -4299,7 +4308,7 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
                   }).sort((a: any, b: any) => b.score - a.score);
                   return (
                     <div className="rounded-lg p-3" style={{ backgroundColor: "white", border: `1px solid ${COLORS.line}` }}>
-                      <p className="text-xs font-medium mb-2" style={{ color: COLORS.green }}>🤝 Best Ball Teams</p>
+                      <p className="text-xs font-medium mb-2" style={{ color: COLORS.green }}>🤝 Overall Best Ball Teams</p>
                       {teamScores.map(({ team, score }: any, idx: number) => (
                         <div key={team.id} className="flex justify-between text-xs mt-1">
                           <span style={{ color: COLORS.charcoal }}>{team.name}</span>
@@ -5059,8 +5068,30 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
   };
 
   // For admins: skip EndOfRoundGamesScreen and go directly to EndOfDayProcessing
-  const handleScoringsFinished = () => {
+  const handleScoringsFinished = async () => {
     if (effectiveIsAdmin) {
+      // Refresh scores immediately for admin view
+      if (eventId && config) {
+        const result = {};
+        for (const r of config.rounds) {
+          result[r.id] = {};
+          for (const g of r.groups) {
+            try {
+              const key = `golf-scores-${eventId}-${r.id}`;
+              const stored = localStorage.getItem(key);
+              if (stored) {
+                result[r.id][g.id] = JSON.parse(stored);
+              } else {
+                result[r.id][g.id] = await getScoresFromFirebase(eventId, r.id, g.id);
+              }
+            } catch (err) {
+              console.warn(`Could not load scores for ${r.id}/${g.id}:`, err);
+              result[r.id][g.id] = { playerScores: {}, jokerHoles: {} };
+            }
+          }
+        }
+        setAllScoresByRound(result);
+      }
       setShowEndOfDay(true);
     } else {
       // Non-admins go directly to Results (leaderboard) - skip EndOfRoundGamesScreen
