@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Minus, X, Target, RefreshCw, Pencil, Check, CheckCircle, Swords, LogOut, BarChart3 } from "lucide-react";
+import { Flag, Trophy, Users, Settings, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Minus, X, Target, RefreshCw, Pencil, Check, CheckCircle, Swords, LogOut, BarChart3, Share2 } from "lucide-react";
 import { QRCodeSVG as QRCode } from "qrcode.react";
 import { useAuth } from "./auth-provider";
 import { db } from "@/lib/firebase";
@@ -3730,17 +3730,178 @@ function GameResultsTab({ config, allScoresByRound, currentRoundId, currentScore
     }
   };
 
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleShare = async () => {
+    if (!selectedRound) return;
+    const savedWinners = selectedRound.gameWinners || {};
+    const lines: string[] = [`⛳ ${config.eventName} — ${selectedRound.label} Results`, ""];
+
+    // Leaderboard
+    if (scores) {
+      lines.push("📊 Leaderboard");
+      // Collect all players across groups with their scores, sorted by points
+      const playerRows = config.players
+        .filter((p) => selectedRound.groups.some((g) => g.playerIds.includes(p.id)))
+        .map((player) => {
+          const playerScores = scores?.playerScores?.[player.id] || {};
+          const jokerHole = scores?.jokerHoles?.[player.id];
+          let totalPts = 0;
+          selectedRound.course.holes.forEach((h) => {
+            const g = playerScores[h.number];
+            if (g !== "" && g != null) {
+              const ph = getPH(selectedRound.course, player, allowance, config.handicapSystem);
+              const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
+              if (pts != null) {
+                const isJoker = h.number === jokerHole && jokerHole !== "NA";
+                totalPts += isJoker ? pts * 2 : pts;
+              }
+            }
+          });
+          return { name: player.name, pts: totalPts };
+        })
+        .sort((a, b) => b.pts - a.pts);
+      playerRows.forEach(({ name, pts }, idx) => {
+        lines.push(`  ${idx + 1}. ${name}: ${pts} pts`);
+      });
+      lines.push("");
+    }
+
+    // Games
+    const games = selectedRound.games || [];
+    if (games.length > 0 || selectedRound.bestBallTeams?.length > 0) {
+      lines.push("🎮 Games");
+
+      if (selectedRound.bestBallTeams?.length > 0 && scores) {
+        const teamScores = selectedRound.bestBallTeams.map((team: any) => {
+          let score = 0;
+          selectedRound.course.holes.forEach((hole: any) => {
+            let bestPts: number | null = null;
+            (team.players || []).forEach((playerId: string) => {
+              const player = config.players.find((p: any) => p.id === playerId);
+              const g = scores?.playerScores?.[playerId]?.[hole.number];
+              if (g !== "" && g != null && player) {
+                const ph = getPH(selectedRound.course, player, allowance, config.handicapSystem);
+                const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
+                if (pts !== null && (bestPts === null || pts > bestPts)) bestPts = pts;
+              }
+            });
+            if (bestPts !== null) score += bestPts;
+          });
+          return { team, score };
+        }).sort((a: any, b: any) => b.score - a.score);
+        lines.push("  🤝 Best Ball Teams:");
+        teamScores.forEach(({ team, score }: any, idx: number) => {
+          lines.push(`    ${idx === 0 && score > 0 ? "🏆 " : ""}${team.name}: ${score > 0 ? `${score} pts` : "—"}`);
+        });
+      }
+
+      games.forEach((game: any) => {
+        if (game.templateId === "sandy") {
+          const saves = config.players
+            .filter((p: any) => selectedRound.groups.some((g: any) => g.playerIds.includes(p.id)))
+            .map((p: any) => ({ name: p.name, count: localGameEntries.filter((e: any) => e.playerId === p.id && e.gameId === "sandy" && e.save).length }))
+            .filter((x: any) => x.count > 0)
+            .sort((a: any, b: any) => b.count - a.count);
+          if (saves.length > 0) lines.push(`  🏖️ Sandy Saver: ${saves.map((s: any) => `${s.name} (${s.count})`).join(", ")}`);
+        } else if (game.templateId === "snake") {
+          const snakeEntries = localGameEntries.filter((e: any) => e.gameId === "snake" && e.threePutts);
+          let holderId = savedWinners[`oncourse-snake`] || savedWinners[`daily-snake`];
+          if (!holderId && snakeEntries.length > 0) {
+            const last = snakeEntries.reduce((a: any, b: any) => (b.hole > a.hole ? b : a));
+            holderId = last.playerId;
+          }
+          const holderName = holderId ? config.players.find((p: any) => p.id === holderId)?.name : null;
+          if (holderName) {
+            lines.push(`  🐍 The Snake: ${holderName}`);
+            const snakeByPlayer: Record<string, number[]> = {};
+            snakeEntries.forEach((e: any) => {
+              if (!snakeByPlayer[e.playerId]) snakeByPlayer[e.playerId] = [];
+              snakeByPlayer[e.playerId].push(e.hole);
+            });
+            Object.entries(snakeByPlayer).forEach(([pid, holes]: any) => {
+              const pname = config.players.find((p: any) => p.id === pid)?.name;
+              if (pname) lines.push(`    ${pname}: ${holes.length} × 3-putt (holes ${holes.sort((a: number, b: number) => a - b).join(", ")})`);
+            });
+          }
+        } else if (game.holes && game.holes.length > 1) {
+          lines.push(`  ${game.emoji} ${game.name}:`);
+          game.holes.forEach((holeNum: number) => {
+            const winnerId = savedWinners[`oncourse-${game.templateId}-hole-${holeNum}`];
+            const winnerName = config.players.find((p: any) => p.id === winnerId)?.name;
+            lines.push(`    Hole ${holeNum}: ${winnerName || "—"}`);
+          });
+        } else {
+          const winnerId = savedWinners[`oncourse-${game.templateId}`] || savedWinners[`daily-${game.templateId}`];
+          const winnerName = winnerId ? config.players.find((p: any) => p.id === winnerId)?.name : null;
+          if (winnerName) lines.push(`  ${game.emoji} ${game.name}${game.holes?.length === 1 ? ` (Hole ${game.holes[0]})` : ""}: ${winnerName}`);
+        }
+      });
+      lines.push("");
+    }
+
+    // Overall Standings
+    const selectedIdx = config.rounds.findIndex((r: any) => r.id === selectedRoundId);
+    const roundsToDate = config.rounds.slice(0, selectedIdx + 1).filter((r: any) => !r.excludeFromOverall);
+    if (roundsToDate.length > 0) {
+      const playerTotals = config.players.filter((p: any) => p.name).map((p: any) => {
+        let total = 0;
+        roundsToDate.forEach((r: any) => {
+          const roundScores = allScoresByRound[r.id] || {};
+          const group = getPlayerGroup(r, p.id);
+          const so = group ? roundScores[group.id] : null;
+          if (so) {
+            const stats = computePlayerRoundStats(r, p, allowance, so, config.handicapSystem);
+            total += r.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
+          }
+        });
+        return { player: p, total };
+      }).sort((a: any, b: any) => b.total - a.total);
+      if (playerTotals.some((x: any) => x.total > 0)) {
+        lines.push(`🏆 Overall Standings (after ${selectedRound.label})`);
+        playerTotals.forEach(({ player, total }: any, idx: number) => {
+          lines.push(`  ${idx + 1}. ${player.name}: ${total} pts`);
+        });
+      }
+    }
+
+    const text = lines.join("\n");
+    const title = `${config.eventName} — ${selectedRound.label} Results`;
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title, text });
+      } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2500);
+      }
+    } catch {
+      // User cancelled share — no action needed
+    }
+  };
+
   return (
     <div className="px-4 py-4 pb-24">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-display text-xl" style={{ color: COLORS.green }}>📊 Daily Results</h2>
-        <button
-          onClick={handleManualRefresh}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          title="Refresh results"
-        >
-          <RefreshCw size={18} style={{ color: COLORS.green }} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            style={{ backgroundColor: shareCopied ? COLORS.greenPale : COLORS.goldPale, color: shareCopied ? COLORS.green : COLORS.gold }}
+            title="Share results"
+          >
+            <Share2 size={14} />
+            {shareCopied ? "Copied!" : "Share"}
+          </button>
+          <button
+            onClick={handleManualRefresh}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Refresh results"
+          >
+            <RefreshCw size={18} style={{ color: COLORS.green }} />
+          </button>
+        </div>
       </div>
 
       {/* Round Selection */}
