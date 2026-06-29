@@ -5266,23 +5266,60 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
                   <QRCode value={eventLink} size={180} level="H" includeMargin={true} />
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  const qrCanvas = document.querySelector("canvas");
-                  if (qrCanvas) {
-                    const image = qrCanvas.toDataURL("image/png");
-                    const link = document.createElement("a");
-                    link.href = image;
-                    link.download = `ptm-golf-event-${eventId}-qr.png`;
-                    link.click();
-                    celebrate("⬇️ QR code downloaded!");
-                  }
-                }}
-                className="w-full py-2 rounded-lg font-medium text-xs"
-                style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
-              >
-                ⬇️ Download QR Code
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const qrCanvas = document.querySelector("canvas");
+                    if (qrCanvas) {
+                      const image = qrCanvas.toDataURL("image/png");
+                      // Try to use native share API
+                      if (navigator.share) {
+                        try {
+                          const blob = await (await fetch(image)).blob();
+                          const file = new File([blob], `ptm-golf-event-${eventId}-qr.png`, { type: "image/png" });
+                          await navigator.share({
+                            files: [file],
+                            title: `${config?.eventName || "PTM Golf"} - Event QR Code`,
+                          });
+                          celebrate("📤 QR code shared!");
+                        } catch (err) {
+                          console.log("Share failed:", err);
+                        }
+                      } else {
+                        // Fallback: copy to clipboard
+                        try {
+                          const blob = await (await fetch(image)).blob();
+                          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+                          celebrate("📋 QR code copied to clipboard!");
+                        } catch (err) {
+                          celebrate("📤 Share not available on this device");
+                        }
+                      }
+                    }
+                  }}
+                  className="flex-1 py-2 rounded-lg font-medium text-xs"
+                  style={{ backgroundColor: COLORS.goldPale, color: COLORS.gold }}
+                >
+                  📤 Share QR Code
+                </button>
+                <button
+                  onClick={() => {
+                    const qrCanvas = document.querySelector("canvas");
+                    if (qrCanvas) {
+                      const image = qrCanvas.toDataURL("image/png");
+                      const link = document.createElement("a");
+                      link.href = image;
+                      link.download = `ptm-golf-event-${eventId}-qr.png`;
+                      link.click();
+                      celebrate("⬇️ QR code downloaded!");
+                    }
+                  }}
+                  className="flex-1 py-2 rounded-lg font-medium text-xs"
+                  style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
+                >
+                  ⬇️ Download QR Code
+                </button>
+              </div>
             </div>
           </div>
 
