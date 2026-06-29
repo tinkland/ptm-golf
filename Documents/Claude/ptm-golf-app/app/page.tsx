@@ -121,25 +121,44 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
         <div className="flex flex-col gap-2">
           {events.map(ev => {
             const isCurrent = ev.id === currentId;
-            const dateStr = ev.rounds?.[0]?.date
-              ? new Date(ev.rounds[0].date).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
+            const dateTimeStr = ev.rounds?.[0]?.date
+              ? new Date(ev.rounds[0].date).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
               : null;
+            const eventUrl = `https://ptm-golf.vercel.app/?eventId=${ev.id}`;
             return (
               <div key={ev.id} className="w-full px-4 py-3 rounded-xl flex items-center justify-between"
                 style={{ backgroundColor: "white", border: `1.5px solid ${isCurrent ? COLORS.gold : COLORS.line}` }}>
                 <button onClick={() => onOpenEvent(ev.id, !isCurrent)}
                   className="flex-1 text-left">
                   <p className="font-medium text-sm" style={{ color: COLORS.charcoal }}>{ev.eventName}</p>
-                  {dateStr && <p className="text-xs opacity-60 mt-0.5" style={{ color: COLORS.charcoal }}>{dateStr}</p>}
+                  {dateTimeStr && <p className="text-xs opacity-60 mt-0.5" style={{ color: COLORS.charcoal }}>{dateTimeStr}</p>}
                 </button>
-                <div className="flex items-center gap-2 ml-3">
+                <div className="flex items-center gap-1 ml-3">
                   <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: isCurrent ? COLORS.goldPale : COLORS.greenPale, color: isCurrent ? COLORS.gold : COLORS.green }}>
                     {isCurrent ? "Current" : "Past"}
                   </span>
                   <button
+                    onClick={() => {
+                      if (navigator.share) {
+                        navigator.share({
+                          title: `${ev.eventName} - PTM Golf`,
+                          text: `Join my golf event: ${ev.eventName}`,
+                          url: eventUrl,
+                        }).catch(() => {});
+                      } else {
+                        navigator.clipboard.writeText(eventUrl);
+                        alert("Event URL copied to clipboard!");
+                      }
+                    }}
+                    className="p-1.5 rounded-lg hover:opacity-70 flex-shrink-0"
+                    style={{ color: COLORS.gold }}
+                    title="Share event QR code">
+                    📱
+                  </button>
+                  <button
                     onClick={() => setDeleteConfirm(ev.id)}
-                    className="p-1.5 rounded-lg hover:opacity-70 flex-shrink-0 text-xs font-medium"
+                    className="p-1.5 rounded-lg hover:opacity-70 flex-shrink-0"
                     style={{ color: COLORS.flag }}
                     title="Delete event">
                     🗑️
