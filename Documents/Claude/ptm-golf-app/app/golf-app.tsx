@@ -3569,6 +3569,21 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
   const [competition, setCompetition] = useState("stableford");
   const allowance = config.allowance.stableford;
 
+  // Check if a competition was selected in any round
+  const isCompetitionAvailable = (comp: string) => {
+    const viewRound = view === "overall" ? null : config.rounds.find(r => r.id === view);
+    const roundsToCheck = view === "overall" ? config.rounds.filter(r => !r.excludeFromOverall) : viewRound ? [viewRound] : [];
+
+    if (comp === "skins") {
+      return roundsToCheck.some(r => r.games?.some(g => g.templateId === "skins-daily"));
+    } else if (comp === "best-indexed") {
+      return roundsToCheck.some(r => r.competitions?.includes("best-indexed"));
+    } else if (comp === "best-ball-teams") {
+      return (config.rounds[0]?.bestBallTeams?.length || 0) > 0;
+    }
+    return true; // stableford is always available
+  };
+
   const rows = (() => {
     // Special handling for Best Ball Teams
     if (competition === "best-ball-teams") {
@@ -3786,7 +3801,12 @@ function LeaderboardTab({ config, allScoresByRound, currentRoundId, currentScore
         ))}
       </div>
       <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${COLORS.line}` }}>
-        {rows.length === 0 ? (
+        {!isCompetitionAvailable(competition) ? (
+          <div className="text-sm opacity-60 p-4 text-center" style={{ backgroundColor: COLORS.cream }}>
+            <p style={{ color: COLORS.charcoal }}>Not Played</p>
+            <p style={{ color: COLORS.charcoal, fontSize: "11px", marginTop: "4px" }}>This competition was not selected</p>
+          </div>
+        ) : rows.length === 0 ? (
           <p className="text-sm opacity-60 p-4 text-center">No players yet.</p>
         ) : (
           rows.map((r, i) => (
