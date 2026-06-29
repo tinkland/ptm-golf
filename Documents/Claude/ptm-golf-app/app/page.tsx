@@ -512,12 +512,22 @@ export default function Home() {
   }
 
   if (adminModeAfterLogin) {
+    const handleBackToEvents = () => {
+      setAdminModeAfterLogin(false);
+      setOpenEventInitialTab(undefined);
+      setShowAdminHistory(true);
+      localStorage.removeItem("ptm-golf-eventId");
+      if (typeof window !== "undefined") {
+        window.history.pushState({}, "", "/");
+      }
+    };
     return (
       <GolfApp
         userId={user.uid}
         isAdmin={true}
         adminLimits={adminLimits}
         initialTab={openEventInitialTab}
+        onBack={handleBackToEvents}
         onAdminDone={() => {
           setAdminModeAfterLogin(false);
           setOpenEventInitialTab(undefined);

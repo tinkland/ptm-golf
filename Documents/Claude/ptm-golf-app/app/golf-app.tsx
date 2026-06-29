@@ -1169,6 +1169,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const [handicapSystem, setHandicapSystem] = useState<'whs' | 'ga'>(initialConfig?.handicapSystem ?? 'whs');
   const [signaturesRequired, setSignaturesRequired] = useState<boolean>(initialConfig?.signaturesRequired ?? false);
   const [adminEmail, setAdminEmail] = useState<string>(initialConfig?.adminEmail ?? "");
+  const [adminPin, setAdminPin] = useState<string>(initialConfig?.adminPin ?? "");
 
   // Update rounds when numRounds changes
   const handleNumRoundsChange = (num: number) => {
@@ -1427,6 +1428,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       handicapSystem,
       signaturesRequired,
       adminEmail,
+      adminPin,
       links: adminLinks,
       matches,
     };
@@ -1462,6 +1464,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         if (config.handicapSystem) setHandicapSystem(config.handicapSystem);
         if (config.signaturesRequired !== undefined) setSignaturesRequired(config.signaturesRequired);
         if (config.adminEmail) setAdminEmail(config.adminEmail);
+        if (config.adminPin) setAdminPin(config.adminPin);
         if (config.links) setAdminLinks(config.links);
         if (config.matches) setMatches(config.matches);
 
@@ -2395,6 +2398,20 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
                 </button>
               </div>
               <p className="text-[11px] mt-1 opacity-50" style={{ color: COLORS.charcoal }}>Complete your setup and then use this button to email setup details</p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: COLORS.charcoal }}>Offline Admin PIN (Optional)</p>
+              <input
+                type="text"
+                placeholder="e.g. 1234 (for offline access, leave blank to skip)"
+                value={adminPin}
+                onChange={(e) => setAdminPin(e.target.value.slice(0, 6))}
+                className="w-full px-3 py-2 text-sm rounded-lg"
+                style={{ border: `1px solid ${COLORS.line}` }}
+                maxLength={6}
+              />
+              <p className="text-[11px] mt-1 opacity-50" style={{ color: COLORS.charcoal }}>Set a 4-6 digit PIN for offline admin access if internet drops on the course</p>
             </div>
 
             <div className="flex items-center justify-between py-1">
@@ -4854,7 +4871,7 @@ function PlayersAdmin({ config: initialConfig, currentRoundId, onSave, onBack })
 }
 
 // Main GolfApp Component
-export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, initialTab }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void; adminLimits?: { maxSlots: number; tier: string } | null; initialTab?: string }) {
+export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, initialTab, onBack }: { userId: string; isAdmin?: boolean; onAdminDone?: () => void; adminLimits?: { maxSlots: number; tier: string } | null; initialTab?: string; onBack?: () => void }) {
   const { logout } = useAuth();
   const loadedScoresRef = useRef<any>(null); // Store loaded scores to avoid state timing issues
   const [screen, setScreen] = useState("loading");
@@ -4876,6 +4893,8 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
   const [effectiveIsAdmin, setEffectiveIsAdmin] = useState(isAdmin || false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState("");
 
   // Check if user is the event admin based on stored adminUserId
   useEffect(() => {
@@ -5542,10 +5561,67 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
       {fontStyle}
       <Toast toast={toast} />
 
+      {/* PIN Login Modal */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: "white" }}>
+            <h2 className="text-xl font-bold mb-4" style={{ color: COLORS.green }}>Admin PIN Login</h2>
+            <p className="text-sm mb-4 opacity-70" style={{ color: COLORS.charcoal }}>Enter the admin PIN for offline access</p>
+            <input
+              type="password"
+              placeholder="••••"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value.slice(0, 6))}
+              maxLength={6}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") {
+                  if (pinInput === config?.adminPin) {
+                    setEffectiveIsAdmin(true);
+                    setShowPinModal(false);
+                    setPinInput("");
+                    celebrate("✅ Admin access granted!");
+                  } else {
+                    alert("Incorrect PIN");
+                    setPinInput("");
+                  }
+                }
+              }}
+              className="w-full px-4 py-3 rounded-lg text-lg tracking-widest text-center mb-4"
+              style={{ border: `2px solid ${COLORS.line}`, fontSize: "24px", letterSpacing: "8px" }}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (pinInput === config?.adminPin) {
+                    setEffectiveIsAdmin(true);
+                    setShowPinModal(false);
+                    setPinInput("");
+                    celebrate("✅ Admin access granted!");
+                  } else {
+                    alert("Incorrect PIN");
+                    setPinInput("");
+                  }
+                }}
+                className="flex-1 py-3 rounded-lg font-medium text-white"
+                style={{ backgroundColor: COLORS.green }}>
+                Login
+              </button>
+              <button
+                onClick={() => { setShowPinModal(false); setPinInput(""); }}
+                className="flex-1 py-3 rounded-lg font-medium"
+                style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white", color: COLORS.charcoal }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: "white", borderBottom: `1px solid ${COLORS.line}` }}>
         <div className="flex items-center gap-2">
-          {onAdminDone && (
-            <button onClick={onAdminDone} aria-label="Back" className="p-1 -ml-1">
+          {(onAdminDone || onBack) && (
+            <button onClick={onBack || onAdminDone} aria-label="Back to Events" className="p-1 -ml-1" title="Back to Events">
               <ChevronLeft size={22} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
             </button>
           )}
@@ -5559,6 +5635,11 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
           </div>
         </div>
         <div className="flex gap-2">
+          {!effectiveIsAdmin && config?.adminPin && (
+            <button onClick={() => setShowPinModal(true)} aria-label="Admin PIN" title="Admin PIN Login" className="px-2 py-1 rounded-lg text-xs font-medium" style={{ backgroundColor: COLORS.goldPale, color: COLORS.gold }}>
+              🔐 PIN
+            </button>
+          )}
           {effectiveIsAdmin && (
             <button onClick={() => setScreen("admin-panel")} aria-label="Admin">
               <Settings size={18} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
