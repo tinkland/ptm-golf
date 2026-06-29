@@ -601,6 +601,7 @@ function defaultRound(idx) {
     games: [],
     competitions: [],
     bestBallTeams: [],
+    groupingMode: "ascending",
   };
 }
 
@@ -2003,7 +2004,10 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         {/* Group assignment mode */}
         <div className="flex gap-1 mb-3">
           {(["manual","random","ascending"] as const).map(m => (
-            <button key={m} onClick={() => setGroupMode(m)}
+            <button key={m} onClick={() => {
+              setGroupMode(m);
+              setRounds(rs => rs.map(r => r.id === round.id ? { ...r, groupingMode: m } : r));
+            }}
               className="flex-1 py-1.5 rounded-lg text-xs font-medium capitalize"
               style={{ backgroundColor: groupMode === m ? COLORS.green : "white", color: groupMode === m ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}>
               {m === "ascending" ? "By Score" : m.charAt(0).toUpperCase() + m.slice(1)}
@@ -2487,7 +2491,7 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
   }
   const [gameWinners, setGameWinners] = useState({});
   const [manualGroupAssignments, setManualGroupAssignments] = useState<any>({});
-  const [groupMode, setGroupMode] = useState<"ascending"|"random"|"manual">("ascending");
+  const [groupMode, setGroupMode] = useState<"ascending"|"random"|"manual">(dayTwoRound?.groupingMode || "ascending");
   const [baseGroups, setBaseGroups] = useState<any[] | null>(null);
   const allowance = config.allowance.stableford;
   const gameEntries = gameEntriesData || [];
