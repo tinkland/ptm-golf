@@ -337,6 +337,9 @@ export default function Home() {
 
   function handleOpenEvent(id: string, isPast: boolean) {
     localStorage.setItem("ptm-golf-eventId", id);
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", `?eventId=${id}`);
+    }
     setOpenEventInitialTab(isPast ? "results" : undefined);
     setShowAdminHistory(false);
     setAdminModeAfterLogin(true);

@@ -4345,7 +4345,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
             setConfig(evt);
             setEventId(urlEventId);
             setActiveRoundId(evt.currentRoundId || evt.rounds[0]?.id);
-            setScreen("join");
+            setScreen(initialTab === "results" ? "main" : "join");
             // Always also check Firebase for latest round advancement (don't return early)
             try {
               const firebaseEvt = await getEventFromFirebase(urlEventId);
@@ -4371,7 +4371,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
             setEventId(urlEventId);
             setActiveRoundId(evt.currentRoundId || evt.rounds[0]?.id);
             localStorage.setItem(`event-${urlEventId}`, JSON.stringify(evt));
-            setScreen("join");
+            setScreen(initialTab === "results" ? "main" : "join");
             return;
           }
         } catch (err) {
@@ -4924,7 +4924,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
         </div>
       </div>
 
-      {needsPick ? (
+      {needsPick && tab !== "results" ? (
         <PickGroupScreen
           config={config}
           round={activeRound}
