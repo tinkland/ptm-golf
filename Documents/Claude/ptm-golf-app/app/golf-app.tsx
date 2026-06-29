@@ -893,8 +893,12 @@ function SignatureCaptureScreen({ config, round, groupId, onComplete, scores = {
   const jokerHole = scores?.jokerHoles?.[player.id];
   let totalPts = 0, grossScore = 0;
   (round?.course?.holes || []).forEach((h: any) => {
-    const g = playerScores[h.number];
+    let g = playerScores[h.number];
     if (g !== "" && g != null) {
+      // Replace PU (Pick-Up) with triple bogey score (par + 3)
+      if (g === "PU") {
+        g = h.par + 3;
+      }
       grossScore += g;
       const ph = getPH(round.course, player, allowance, handicapSystem);
       const pts = stablefordPts(g, h.par, strokesOnHole(ph, h.si));
