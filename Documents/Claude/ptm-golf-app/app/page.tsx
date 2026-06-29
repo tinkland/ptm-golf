@@ -338,12 +338,22 @@ export default function Home() {
   function handleOpenEvent(id: string, isPast: boolean) {
     localStorage.setItem("ptm-golf-eventId", id);
     if (typeof window !== "undefined") {
-      window.history.replaceState({}, "", `?eventId=${id}`);
+      window.history.pushState({ adminHistory: true }, "", `?eventId=${id}`);
     }
     setOpenEventInitialTab(isPast ? "results" : undefined);
     setShowAdminHistory(false);
     setAdminModeAfterLogin(true);
   }
+
+  useEffect(() => {
+    function onPopState() {
+      setAdminModeAfterLogin(false);
+      setOpenEventInitialTab(undefined);
+      setShowAdminHistory(true);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   if (!user) {
     if (showAdminHistory) {

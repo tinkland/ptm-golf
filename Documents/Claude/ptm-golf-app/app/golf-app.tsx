@@ -4904,13 +4904,20 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
       <Toast toast={toast} />
 
       <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: "white", borderBottom: `1px solid ${COLORS.line}` }}>
-        <div>
-          <h1 className="text-xl font-bold" style={{ color: COLORS.green }}>
-            ⛳ {config?.eventName}
-          </h1>
-          <p className="text-xs mt-0.5" style={{ color: COLORS.charcoal, opacity: 0.6 }}>
-            {activeRound?.label || ""}
-          </p>
+        <div className="flex items-center gap-2">
+          {onAdminDone && (
+            <button onClick={onAdminDone} aria-label="Back" className="p-1 -ml-1">
+              <ChevronLeft size={22} style={{ color: COLORS.charcoal, opacity: 0.6 }} />
+            </button>
+          )}
+          <div>
+            <h1 className="text-xl font-bold" style={{ color: COLORS.green }}>
+              ⛳ {config?.eventName}
+            </h1>
+            <p className="text-xs mt-0.5" style={{ color: COLORS.charcoal, opacity: 0.6 }}>
+              {activeRound?.label || ""}
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           {effectiveIsAdmin && (
