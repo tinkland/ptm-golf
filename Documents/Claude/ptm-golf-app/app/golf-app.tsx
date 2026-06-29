@@ -1388,7 +1388,12 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       eventName,
       rounds,
       players,
-      allowance: { stableford: 100 },
+      allowance: { stableford: Number(allowStable) || 95, matchplay: Number(allowMatch) || 100 },
+      handicapSystem,
+      signaturesRequired,
+      adminEmail,
+      links: adminLinks,
+      matches,
     };
     const json = JSON.stringify(config, null, 2);
     const blob = new Blob([json], { type: "application/json" });
@@ -1415,13 +1420,27 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         setEventName(config.eventName || "");
         let newRounds = config.rounds || defaultRounds();
         setRounds(newRounds);
+        setNumRounds(newRounds.length);
         setPlayers(config.players || []);
+
+        // Load optional fields
+        if (config.handicapSystem) setHandicapSystem(config.handicapSystem);
+        if (config.signaturesRequired !== undefined) setSignaturesRequired(config.signaturesRequired);
+        if (config.adminEmail) setAdminEmail(config.adminEmail);
+        if (config.links) setAdminLinks(config.links);
+        if (config.matches) setMatches(config.matches);
+
+        // Load allowance if provided
+        if (config.allowance) {
+          if (config.allowance.stableford) setAllowStable(config.allowance.stableford.toString());
+          if (config.allowance.matchplay) setAllowMatch(config.allowance.matchplay.toString());
+        }
+
         if (config.course) {
           setRounds((r) =>
             r.map((round, idx) => (idx === roundTab ? { ...round, course: config.course } : round))
           );
         }
-        // Games are now loaded from each round, not from config.games
       } catch (err) {
         alert("Error loading config: " + err);
       }
