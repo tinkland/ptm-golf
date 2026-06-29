@@ -1102,7 +1102,21 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [eventName, setEventName] = useState(initialConfig?.eventName || "");
   const [numRounds, setNumRounds] = useState(initialConfig?.rounds?.length || 2);
-  const [rounds, setRounds] = useState(initialConfig?.rounds || defaultRounds());
+  const getDefaultGroups = (playerCount: number) => {
+    const groupCount = Math.max(1, Math.ceil(playerCount / 4));
+    return Array.from({ length: groupCount }, (_, i) => ({ id: uid(), name: `Group ${i + 1}`, playerIds: [], teeTime: "" }));
+  };
+
+  const [rounds, setRounds] = useState(() => {
+    if (initialConfig?.rounds) return initialConfig.rounds;
+    const playerCount = initialConfig?.players?.filter((p: any) => p.name).length || 0;
+    const groupCount = Math.max(1, Math.ceil(playerCount / 4));
+    const groups = Array.from({ length: groupCount }, (_, i) => ({ id: uid(), name: `Group ${i + 1}`, playerIds: [], teeTime: "" }));
+    return [
+      { ...defaultRound(1), groups },
+      { ...defaultRound(2), groups: groups.map(g => ({ ...g, id: uid() })) }
+    ];
+  });
   const [roundTab, setRoundTab] = useState(0);
   const [adminLogo, setAdminLogo] = useState(() => localStorage.getItem("ptm-golf-logo") || DEFAULT_LOGO);
   const [adminLinks, setAdminLinks] = useState(() => {
@@ -1132,6 +1146,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         newRounds.push({
           ...defaultRound(i + 1),
           label: `Round ${i + 1}`,
+          groups: rounds[i]?.groups || getDefaultGroups(players.filter(p => p.name).length),
         });
       }
     }
@@ -1244,10 +1259,54 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       return { ...r, playerTees };
     }));
   }
+  function validateCourseIndexes(round: any): string | null {
+    const allHoles = new Set<number>();
+    const addedHoles = new Set<number>();
+    for (let i = 1; i <= 18; i++) allHoles.add(i);
+
+    const checkTee = (holes: any[]) => {
+      holes.forEach((h) => {
+        const si = Number(h.si);
+        if (si < 1 || si > 18) return;
+        if (addedHoles.has(si)) return; // Already added this SI
+        addedHoles.add(si);
+      });
+    };
+
+    checkTee(round.course.holes || []);
+    (round.course.tees || []).forEach((t: any) => checkTee(t.holes || []));
+
+    const missing = Array.from(allHoles).filter(h => !addedHoles.has(h));
+    const duplicates: number[] = [];
+    const seenSI = new Set<number>();
+    const checkDups = (holes: any[]) => {
+      holes.forEach((h) => {
+        const si = Number(h.si);
+        if (si >= 1 && si <= 18) {
+          if (seenSI.has(si)) duplicates.push(si);
+          seenSI.add(si);
+        }
+      });
+    };
+    checkDups(round.course.holes || []);
+    (round.course.tees || []).forEach((t: any) => checkDups(t.holes || []));
+
+    if (missing.length > 0) return `Missing stroke indexes: ${missing.join(", ")}`;
+    if (duplicates.length > 0) return `Duplicate stroke indexes: ${duplicates.join(", ")}`;
+    return null;
+  }
+
   function addPlayer() {
     setPlayers((p) => [...p, { id: uid(), name: "", handicapIndex: "" }]);
   }
   function updatePlayer(id, field, val) {
+    if (field === "handicapIndex" && val !== "") {
+      const num = Number(val);
+      if (num > 54) {
+        alert("Handicap Index cannot exceed 54");
+        return;
+      }
+    }
     setPlayers((ps) => ps.map((p) => (p.id === id ? { ...p, [field]: val } : p)));
   }
   function removePlayer(id) {
@@ -1336,7 +1395,8 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ptm-golf-test-${new Date().toISOString().slice(0, 10)}.json`;
+    const safeName = (eventName || "ptm-golf-event").replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+    a.download = `${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1417,6 +1477,15 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
   }
 
   function handleSave() {
+    // Validate all rounds' course indexes
+    for (const round of rounds) {
+      const error = validateCourseIndexes(round);
+      if (error) {
+        alert(`${round.label}: ${error}`);
+        return;
+      }
+    }
+
     // Update each round to enable/disable joker based on games selection
     const updatedRounds = rounds.map((r) => ({
       ...r,
@@ -1564,30 +1633,89 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         )}
         <div className="flex flex-col gap-2">
           {COMPETITIONS.some((c) => c.id === "best-ball-teams") && (
-            <button
-              onClick={() => {
-                // Get all players in the round (from groups if assigned, otherwise all players)
-                const allRoundPlayerIds = rounds[roundTab].groups?.flatMap((g) => g.playerIds) || [];
-                const roundPlayers = allRoundPlayerIds.length > 0
-                  ? allRoundPlayerIds.map((pid) => players.find((p) => p.id === pid)).filter(Boolean)
-                  : players.filter((p) => p.name);
-                const newTeams = generateRandomTeams(roundPlayers);
-                const updatedRound = { ...rounds[roundTab], bestBallTeams: newTeams };
-                setRounds(rounds.map((r) => (r.id === rounds[roundTab].id ? updatedRound : r)));
-              }}
-              className="w-full py-2 rounded-lg text-sm font-medium"
-              style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
-            >
-              {rounds[roundTab]?.bestBallTeams && rounds[roundTab].bestBallTeams.length > 0 ? "Regenerate Teams" : "Generate Teams"}
-            </button>
+            <>
+              <div className="flex gap-2 mb-2">
+                {(["random", "manual"] as const).map(mode => (
+                  <button key={mode} onClick={() => { if (rounds[roundTab]?.bestBallTeamMode !== mode) setRounds(rounds.map((r, i) => i === roundTab ? { ...r, bestBallTeamMode: mode, bestBallTeams: [] } : r)); }}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-medium capitalize"
+                    style={{ backgroundColor: (rounds[roundTab]?.bestBallTeamMode || "random") === mode ? COLORS.green : "white", color: (rounds[roundTab]?.bestBallTeamMode || "random") === mode ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}>
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              {(rounds[roundTab]?.bestBallTeamMode || "random") === "random" ? (
+                <button
+                  onClick={() => {
+                    const allRoundPlayerIds = rounds[roundTab].groups?.flatMap((g) => g.playerIds) || [];
+                    const roundPlayers = allRoundPlayerIds.length > 0
+                      ? allRoundPlayerIds.map((pid) => players.find((p) => p.id === pid)).filter(Boolean)
+                      : players.filter((p) => p.name);
+                    const newTeams = generateRandomTeams(roundPlayers);
+                    const updatedRound = { ...rounds[roundTab], bestBallTeams: newTeams };
+                    setRounds(rounds.map((r) => (r.id === rounds[roundTab].id ? updatedRound : r)));
+                  }}
+                  className="w-full py-2 rounded-lg text-sm font-medium"
+                  style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
+                >
+                  {rounds[roundTab]?.bestBallTeams && rounds[roundTab].bestBallTeams.length > 0 ? "Regenerate Teams" : "Generate Teams"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const allRoundPlayerIds = rounds[roundTab].groups?.flatMap((g) => g.playerIds) || [];
+                    const roundPlayers = allRoundPlayerIds.length > 0
+                      ? allRoundPlayerIds.map((pid) => players.find((p) => p.id === pid)).filter(Boolean)
+                      : players.filter((p) => p.name);
+                    if (roundPlayers.length < 2) { alert("Need at least 2 players"); return; }
+                    const newTeams = [{ id: uid(), name: "Team 1", players: [roundPlayers[0].id] }, { id: uid(), name: "Team 2", players: roundPlayers.length > 1 ? [roundPlayers[1].id] : [] }];
+                    setRounds(rounds.map((r, i) => i === roundTab ? { ...r, bestBallTeams: newTeams } : r));
+                  }}
+                  className="w-full py-2 rounded-lg text-sm font-medium"
+                  style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
+                >
+                  + Add Team
+                </button>
+              )}
+            </>
           )}
           {rounds[roundTab]?.bestBallTeams && rounds[roundTab].bestBallTeams.length > 0 && (
             <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.cream, border: `1px solid ${COLORS.line}` }}>
-              {rounds[roundTab].bestBallTeams.map((team, idx) => (
-                <div key={idx} className="text-xs mb-1.5 py-1" style={{ color: COLORS.charcoal }}>
-                  <strong>Team {idx + 1}:</strong> {team.name || team.players?.map((pid) => players.find((p) => p.id === pid)?.name || "?").join(" & ") || "—"}
-                </div>
-              ))}
+              {rounds[roundTab].bestBallTeams.map((team, idx) => {
+                const isManual = (rounds[roundTab]?.bestBallTeamMode || "random") === "manual";
+                return (
+                  <div key={idx} className={`${isManual ? "mb-3 p-2 bg-white rounded" : "mb-1.5"} py-1`} style={isManual ? { border: `1px solid ${COLORS.line}` } : {}}>
+                    <div className="flex items-center justify-between gap-2">
+                      {isManual ? (
+                        <input type="text" value={team.name || `Team ${idx + 1}`} onChange={(e) => setRounds(rounds.map((r, i) => i === roundTab ? { ...r, bestBallTeams: r.bestBallTeams.map((t, ti) => ti === idx ? { ...t, name: e.target.value } : t) } : r))} className="flex-1 text-xs px-2 py-1 rounded" style={{ border: `1px solid ${COLORS.line}` }} />
+                      ) : (
+                        <strong className="text-xs">{team.name || `Team ${idx + 1}:`}</strong>
+                      )}
+                      {isManual && (
+                        <button onClick={() => setRounds(rounds.map((r, i) => i === roundTab ? { ...r, bestBallTeams: r.bestBallTeams.filter((_, ti) => ti !== idx) } : r))} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: COLORS.flagPale, color: COLORS.flag }}>✕</button>
+                      )}
+                    </div>
+                    {isManual ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {team.players?.map((pid) => {
+                          const pname = players.find((p) => p.id === pid)?.name;
+                          return (
+                            <span key={pid} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: COLORS.goldPale, color: COLORS.gold }}>
+                              {pname}
+                              <button onClick={() => setRounds(rounds.map((r, i) => i === roundTab ? { ...r, bestBallTeams: r.bestBallTeams.map((t, ti) => ti === idx ? { ...t, players: t.players?.filter(p => p !== pid) } : t) } : r))} className="ml-1 font-bold">×</button>
+                            </span>
+                          );
+                        })}
+                        <select onChange={(e) => { const pid = e.target.value; if (pid && !team.players?.includes(pid)) setRounds(rounds.map((r, i) => i === roundTab ? { ...r, bestBallTeams: r.bestBallTeams.map((t, ti) => ti === idx ? { ...t, players: [...(t.players || []), pid] } : t) } : r)); }} className="text-xs px-2 py-0.5 rounded" style={{ border: `1px solid ${COLORS.line}` }}>
+                          <option value="">+ Add player</option>
+                          {players.filter(p => p.name && !team.players?.includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    ) : (
+                      <span className="text-xs" style={{ color: COLORS.charcoal }}>{team.players?.map((pid) => players.find((p) => p.id === pid)?.name || "?").join(" & ") || "—"}</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1598,7 +1726,14 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         {rounds.map((r, i) => (
           <button
             key={r.id}
-            onClick={() => setRoundTab(i)}
+            onClick={() => {
+              const error = validateCourseIndexes(rounds[roundTab]);
+              if (error) {
+                alert(`Round ${rounds[roundTab].label}: ${error}`);
+                return;
+              }
+              setRoundTab(i);
+            }}
             className="flex-1 py-2 rounded-lg text-sm font-medium"
             style={{ backgroundColor: roundTab === i ? COLORS.green : "white", color: roundTab === i ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}
           >
@@ -1725,6 +1860,17 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         );
       })()}
 
+      {/* Add Tee button — only if < 2 additional tees */}
+      {(round.course.tees || []).length < 2 && (
+        <button
+          onClick={addExtraTee}
+          className="w-full py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+          style={{ border: `2px dashed ${COLORS.line}`, color: COLORS.charcoal, backgroundColor: "transparent" }}
+        >
+          <Plus size={16} /> Add Tee Marker
+        </button>
+      )}
+
       {/* Additional tees */}
       {(round.course.tees || []).map((tee) => {
         const teeColour = TEE_COLOURS.find(c => c.id === tee.colour) || TEE_COLOURS[2];
@@ -1789,17 +1935,6 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
           </SectionCard>
         );
       })}
-
-      {/* Add Tee button — only if < 2 additional tees */}
-      {(round.course.tees || []).length < 2 && (
-        <button
-          onClick={addExtraTee}
-          className="w-full py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
-          style={{ border: `2px dashed ${COLORS.line}`, color: COLORS.charcoal, backgroundColor: "transparent" }}
-        >
-          <Plus size={16} /> Add Tee Marker
-        </button>
-      )}
 
       <SectionCard title={`Groups — ${round.label}`} right={<button onClick={addGroup} className="text-xs flex items-center gap-1 px-2 py-1 rounded-md" style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}><Plus size={14} /> Group</button>}>
         {/* Group assignment mode */}
@@ -2124,30 +2259,32 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
               </p>
               <div className="flex flex-col gap-2">
                 {adminLinks.map((link, idx) => (
-                  <div key={idx} className="flex gap-2">
+                  <div key={idx} className="flex flex-col gap-2 p-2 rounded-lg" style={{ border: `1px solid ${COLORS.line}`, backgroundColor: COLORS.cream }}>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Link name"
+                        value={link.label}
+                        onChange={(e) => updateAdminLink(idx, "label", e.target.value)}
+                        className="flex-1 px-2 py-1.5 text-sm rounded-lg min-w-0"
+                        style={{ border: `1px solid ${COLORS.line}` }}
+                      />
+                      <button
+                        onClick={() => removeAdminLink(idx)}
+                        className="w-10 h-10 flex items-center justify-center rounded-lg flex-shrink-0"
+                        style={{ backgroundColor: COLORS.flagPale, color: COLORS.flag }}
+                      >
+                        ✕
+                      </button>
+                    </div>
                     <input
                       type="text"
-                      placeholder="Link name"
-                      value={link.label}
-                      onChange={(e) => updateAdminLink(idx, "label", e.target.value)}
-                      className="flex-1 px-2 py-1.5 text-sm rounded-lg"
-                      style={{ border: `1px solid ${COLORS.line}` }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="URL"
+                      placeholder="https://example.com"
                       value={link.url}
                       onChange={(e) => updateAdminLink(idx, "url", e.target.value)}
-                      className="flex-1 px-2 py-1.5 text-sm rounded-lg"
+                      className="w-full px-2 py-1.5 text-sm rounded-lg"
                       style={{ border: `1px solid ${COLORS.line}` }}
                     />
-                    <button
-                      onClick={() => removeAdminLink(idx)}
-                      className="w-10 h-10 flex items-center justify-center rounded-lg"
-                      style={{ backgroundColor: COLORS.flagPale, color: COLORS.flag }}
-                    >
-                      ✕
-                    </button>
                   </div>
                 ))}
                 {adminLinks.length < 3 && (
@@ -2186,7 +2323,7 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
                   Email me
                 </button>
               </div>
-              <p className="text-[11px] mt-1 opacity-50" style={{ color: COLORS.charcoal }}>Save the event first, then use this button to email setup details</p>
+              <p className="text-[11px] mt-1 opacity-50" style={{ color: COLORS.charcoal }}>Complete your setup and then use this button to email setup details</p>
             </div>
 
             <div className="flex items-center justify-between py-1">
