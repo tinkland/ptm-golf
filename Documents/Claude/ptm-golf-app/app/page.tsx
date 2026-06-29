@@ -124,40 +124,42 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
       </button>
 
       {deleteConfirm && (
-        <div className="mb-4 p-4 rounded-xl border bg-white" style={{ borderColor: COLORS.flag }}>
-          {(() => {
-            const ev = events.find(e => e.id === deleteConfirm);
-            const createdStr = ev?.savedAt
-              ? new Date(ev.savedAt).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
-              : "Unknown";
-            return (
-              <>
-                <p className="text-sm font-medium mb-2" style={{ color: COLORS.charcoal }}>
-                  Delete &ldquo;{ev?.eventName}&rdquo;?
-                </p>
-                <p className="text-xs opacity-60 mb-3" style={{ color: COLORS.charcoal }}>
-                  Created: {createdStr}
-                </p>
-                <p className="text-xs mb-3" style={{ color: COLORS.flag }}>
-                  This will delete the event from your device and Firebase. This cannot be undone.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleDeleteEvent(deleteConfirm, ev?.eventName || "Event")}
-                    className="flex-1 py-2 rounded-lg text-sm font-medium text-white"
-                    style={{ backgroundColor: COLORS.flag }}>
-                    Delete
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirm(null)}
-                    className="flex-1 py-2 rounded-lg text-sm font-medium"
-                    style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>
-                    Cancel
-                  </button>
-                </div>
-              </>
-            );
-          })()}
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" style={{ backgroundColor: "white" }}>
+            {(() => {
+              const ev = events.find(e => e.id === deleteConfirm);
+              const createdStr = ev?.createdAt
+                ? new Date(ev.createdAt).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                : "Unknown";
+              return (
+                <>
+                  <h2 className="text-lg font-bold mb-3" style={{ color: COLORS.charcoal }}>
+                    Delete &ldquo;{ev?.eventName}&rdquo;?
+                  </h2>
+                  <p className="text-sm opacity-70 mb-3" style={{ color: COLORS.charcoal }}>
+                    Created: {createdStr}
+                  </p>
+                  <p className="text-sm mb-4" style={{ color: COLORS.flag }}>
+                    This will delete the event from your device and Firebase. This cannot be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDeleteEvent(deleteConfirm, ev?.eventName || "Event")}
+                      className="flex-1 py-3 rounded-lg text-sm font-medium text-white"
+                      style={{ backgroundColor: COLORS.flag }}>
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      className="flex-1 py-3 rounded-lg text-sm font-medium"
+                      style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white", color: COLORS.charcoal }}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
       )}
 
