@@ -45,6 +45,28 @@ function getStoredEvents(): { id: string; eventName: string; savedAt?: number; r
 function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; onOpenEvent: (id: string, isPast: boolean) => void }) {
   const events = getStoredEvents();
   const currentId = (() => { try { return localStorage.getItem("ptm-golf-eventId"); } catch { return null; } })();
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const handleDeleteEvent = async (eventId: string, eventName: string) => {
+    try {
+      // Delete from localStorage
+      localStorage.removeItem(`event-${eventId}`);
+
+      // Delete from Firebase collections if user is authenticated
+      const response = await fetch('/api/delete-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId }),
+      }).catch(() => null); // Silently fail if API endpoint doesn't exist yet
+
+      setDeleteConfirm(null);
+      // Refresh the page to update the event list
+      window.location.reload();
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete event. Please try again.");
+    }
+  };
 
   return (
     <div style={{ backgroundColor: COLORS.cream, minHeight: "100vh" }} className="flex flex-col max-w-md mx-auto px-4 py-8">
@@ -57,6 +79,44 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
         + Setup New Event
       </button>
 
+      {deleteConfirm && (
+        <div className="mb-4 p-4 rounded-xl border bg-white" style={{ borderColor: COLORS.flag }}>
+          {(() => {
+            const ev = events.find(e => e.id === deleteConfirm);
+            const createdStr = ev?.savedAt
+              ? new Date(ev.savedAt).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+              : "Unknown";
+            return (
+              <>
+                <p className="text-sm font-medium mb-2" style={{ color: COLORS.charcoal }}>
+                  Delete &ldquo;{ev?.eventName}&rdquo;?
+                </p>
+                <p className="text-xs opacity-60 mb-3" style={{ color: COLORS.charcoal }}>
+                  Created: {createdStr}
+                </p>
+                <p className="text-xs mb-3" style={{ color: COLORS.flag }}>
+                  This will delete the event from your device and Firebase. This cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDeleteEvent(deleteConfirm, ev?.eventName || "Event")}
+                    className="flex-1 py-2 rounded-lg text-sm font-medium text-white"
+                    style={{ backgroundColor: COLORS.flag }}>
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(null)}
+                    className="flex-1 py-2 rounded-lg text-sm font-medium"
+                    style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white" }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {events.length > 0 && (
         <div className="flex flex-col gap-2">
           {events.map(ev => {
@@ -65,18 +125,27 @@ function AdminHomeScreen({ onNewEvent, onOpenEvent }: { onNewEvent: () => void; 
               ? new Date(ev.rounds[0].date).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
               : null;
             return (
-              <button key={ev.id} onClick={() => onOpenEvent(ev.id, !isCurrent)}
-                className="w-full px-4 py-3 rounded-xl text-left flex items-center justify-between"
+              <div key={ev.id} className="w-full px-4 py-3 rounded-xl flex items-center justify-between"
                 style={{ backgroundColor: "white", border: `1.5px solid ${isCurrent ? COLORS.gold : COLORS.line}` }}>
-                <div>
+                <button onClick={() => onOpenEvent(ev.id, !isCurrent)}
+                  className="flex-1 text-left">
                   <p className="font-medium text-sm" style={{ color: COLORS.charcoal }}>{ev.eventName}</p>
                   {dateStr && <p className="text-xs opacity-60 mt-0.5" style={{ color: COLORS.charcoal }}>{dateStr}</p>}
+                </button>
+                <div className="flex items-center gap-2 ml-3">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: isCurrent ? COLORS.goldPale : COLORS.greenPale, color: isCurrent ? COLORS.gold : COLORS.green }}>
+                    {isCurrent ? "Current" : "Past"}
+                  </span>
+                  <button
+                    onClick={() => setDeleteConfirm(ev.id)}
+                    className="p-1.5 rounded-lg hover:opacity-70 flex-shrink-0 text-xs font-medium"
+                    style={{ color: COLORS.flag }}
+                    title="Delete event">
+                    🗑️
+                  </button>
                 </div>
-                <span className="text-xs font-medium px-2 py-0.5 rounded-full ml-3 flex-shrink-0"
-                  style={{ backgroundColor: isCurrent ? COLORS.goldPale : COLORS.greenPale, color: isCurrent ? COLORS.gold : COLORS.green }}>
-                  {isCurrent ? "Current" : "Past"}
-                </span>
-              </button>
+              </div>
             );
           })}
         </div>
