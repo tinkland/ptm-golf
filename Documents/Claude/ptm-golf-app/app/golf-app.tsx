@@ -4961,7 +4961,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
     if (config?.signaturesRequired) {
       setShowSignatureCapture(true);
     } else {
-      setShowEndOfRoundGames(true);
+      handleScoringsFinished();
     }
   };
 
@@ -4979,6 +4979,15 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
         celebrate("🎉 All rounds complete!");
         setScreen("main");
       }
+    }
+  };
+
+  // For admins: skip EndOfRoundGamesScreen and go directly to EndOfDayProcessing
+  const handleScoringsFinished = () => {
+    if (effectiveIsAdmin) {
+      setShowEndOfDay(true);
+    } else {
+      setShowEndOfRoundGames(true);
     }
   };
 
@@ -5431,7 +5440,7 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
             if (eventId && activeRoundId && currentGroupId) {
               saveSignaturesToFirebase(eventId, activeRoundId, currentGroupId, sigs).catch(() => {});
             }
-            setShowEndOfRoundGames(true);
+            handleScoringsFinished();
           }}
         />
       ) : showEndOfRoundGames ? (
