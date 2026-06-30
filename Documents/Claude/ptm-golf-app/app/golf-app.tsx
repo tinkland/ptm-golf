@@ -2960,9 +2960,11 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
 
 // PickGroupScreen Component
 function PickGroupScreen({ config, round, onPick, onCancel }) {
+  const roundNum = config?.rounds?.findIndex((r) => r.id === round.id) + 1;
   return (
     <div className="max-w-md mx-auto px-4 py-6">
-      <p className="text-sm font-medium mb-2" style={{ color: COLORS.charcoal }}>Select your group:</p>
+      <h2 className="text-lg font-bold mb-1" style={{ color: COLORS.green }}>Day {roundNum} - What group are you in?</h2>
+      <p className="text-xs mb-4" style={{ color: COLORS.charcoal, opacity: 0.6 }}>{round.label}</p>
       <div className="flex flex-col gap-2">
         {round.groups.map((g) => {
           const names = g.playerIds.map((id) => config?.players?.find((p) => p.id === id)?.name).filter(Boolean);
