@@ -30,6 +30,8 @@ export default function OwnerDashboard() {
   const [qrEventId, setQrEventId] = useState<string | null>(null);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [completingEventId, setCompletingEventId] = useState<string | null>(null);
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const [scoringProgress, setScoringProgress] = useState<{ [key: string]: number }>({});
 
   // Check if user is owner
   const isOwner = user?.email === OWNER_EMAIL;
@@ -144,6 +146,41 @@ export default function OwnerDashboard() {
     } finally {
       setCompletingEventId(null);
     }
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    try {
+      setDeletingEventId(eventId);
+
+      const response = await fetch('/api/delete-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete event');
+      }
+
+      await fetchEvents();
+      alert('✅ Event deleted successfully!');
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Failed to delete event:', err);
+    } finally {
+      setDeletingEventId(null);
+    }
+  };
+
+  const exportEventData = (event: any) => {
+    const dataStr = JSON.stringify(event, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `event-${event.id}-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!isOwner) {
@@ -306,15 +343,58 @@ export default function OwnerDashboard() {
                   {/* Expanded Details */}
                   {expandedEventId === event.id && (
                     <div
-                      className="mb-4 p-3 rounded-lg text-sm border-t"
+                      className="mb-4 p-4 rounded-lg text-sm border-t space-y-3"
                       style={{ backgroundColor: COLORS.cream, borderColor: COLORS.line }}
                     >
-                      <p className="font-medium mb-2" style={{ color: COLORS.green }}>Event Configuration</p>
-                      <div className="text-xs space-y-1" style={{ color: COLORS.charcoal }}>
-                        <p><strong>Players:</strong> {event.players?.length || 'N/A'}</p>
-                        <p><strong>Groups:</strong> {event.groups?.length || 'N/A'}</p>
-                        <p><strong>Competitions:</strong> {event.competitions?.length || 'N/A'}</p>
-                        <p><strong>Matches:</strong> {event.matches?.length || 0}</p>
+                      {/* Configuration Summary */}
+                      <div>
+                        <p className="font-medium mb-2" style={{ color: COLORS.green }}>Configuration</p>
+                        <div className="text-xs grid grid-cols-2 gap-2" style={{ color: COLORS.charcoal }}>
+                          <p><strong>Players:</strong> {event.players?.length || 0}</p>
+                          <p><strong>Groups:</strong> {event.groups?.length || 0}</p>
+                          <p><strong>Competitions:</strong> {event.competitions?.filter((c: any) => c.selected).length || 0}</p>
+                          <p><strong>Matches:</strong> {event.matches?.length || 0}</p>
+                        </div>
+                      </div>
+
+                      {/* Players List */}
+                      {event.players && event.players.length > 0 && (
+                        <div>
+                          <p className="font-medium mb-1" style={{ color: COLORS.green }}>Players ({event.players.length})</p>
+                          <div className="text-xs max-h-40 overflow-y-auto" style={{ color: COLORS.charcoal }}>
+                            {event.players.map((p: any) => (
+                              <div key={p.id} className="py-0.5">
+                                {p.name} <span style={{ opacity: 0.6 }}>({p.handicap})</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => exportEventData(event)}
+                          className="flex-1 py-2 px-2 rounded text-xs font-medium text-white"
+                          style={{ backgroundColor: COLORS.greenLight }}
+                        >
+                          📥 Export
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete "${event.eventName}"? This cannot be undone.`)) {
+                              deleteEvent(event.id);
+                            }
+                          }}
+                          disabled={deletingEventId === event.id}
+                          className="flex-1 py-2 px-2 rounded text-xs font-medium text-white"
+                          style={{
+                            backgroundColor: deletingEventId === event.id ? COLORS.line : COLORS.flag,
+                            opacity: deletingEventId === event.id ? 0.6 : 1,
+                          }}
+                        >
+                          {deletingEventId === event.id ? '⏳' : '🗑️'} Delete
+                        </button>
                       </div>
                     </div>
                   )}
