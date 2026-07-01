@@ -27,6 +27,7 @@ export default function OwnerDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [progressingEventId, setProgressingEventId] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
+  const [qrEventId, setQrEventId] = useState<string | null>(null);
 
   // Check if user is owner
   const isOwner = user?.email === OWNER_EMAIL;
@@ -240,8 +241,36 @@ export default function OwnerDashboard() {
                     </div>
                   </div>
 
-                  {/* Progress Button */}
-                  {!isLastRound && (
+                  {/* Buttons */}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setQrEventId(event.id)}
+                      className="flex-1 py-2.5 rounded-lg font-medium text-sm"
+                      style={{
+                        backgroundColor: COLORS.greenPale,
+                        color: COLORS.green,
+                      }}
+                      title="Get QR Code"
+                    >
+                      📱 QR Code
+                    </button>
+                    {!isLastRound && (
+                      <button
+                        onClick={() => progressEvent(event.id)}
+                        disabled={progressingEventId === event.id}
+                        className="flex-1 py-2.5 rounded-lg font-medium text-white flex items-center justify-center gap-2"
+                        style={{
+                          backgroundColor: progressingEventId === event.id ? COLORS.line : COLORS.gold,
+                          opacity: progressingEventId === event.id ? 0.6 : 1,
+                        }}
+                      >
+                        <span>{nextRound?.label}</span>
+                        <ChevronRight size={16} />
+                      </button>
+                    )}
+                  </div>
+
+                  {!isLastRound && !progressingEventId && (
                     <button
                       onClick={() => progressEvent(event.id)}
                       disabled={progressingEventId === event.id}
@@ -289,6 +318,68 @@ export default function OwnerDashboard() {
             <p style={{ color: COLORS.charcoal, opacity: 0.6 }}>
               Events will appear here once they're created
             </p>
+          </div>
+        )}
+
+        {/* QR Code Modal */}
+        {qrEventId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              {(() => {
+                const event = events.find(e => e.id === qrEventId);
+                const qrUrl = `https://ptm-golf.vercel.app/?eventId=${qrEventId}`;
+                return (
+                  <>
+                    <h2 className="text-lg font-bold mb-2" style={{ color: COLORS.green }}>
+                      📱 Event QR Code
+                    </h2>
+                    <p className="text-sm mb-4" style={{ color: COLORS.charcoal, opacity: 0.7 }}>
+                      {event?.eventName}
+                    </p>
+
+                    <div
+                      className="p-4 rounded-lg mb-4 text-center"
+                      style={{ backgroundColor: COLORS.cream }}
+                    >
+                      <p className="text-xs mb-3" style={{ color: COLORS.charcoal, opacity: 0.6 }}>
+                        Share this link with scorers:
+                      </p>
+                      <p
+                        className="text-xs font-mono break-all mb-3 p-2 rounded"
+                        style={{ backgroundColor: "white", color: COLORS.charcoal, border: `1px solid ${COLORS.line}` }}
+                      >
+                        {qrUrl}
+                      </p>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(qrUrl);
+                          alert("QR Code URL copied to clipboard!");
+                        }}
+                        className="w-full py-2 rounded-lg text-sm font-medium text-white mb-2"
+                        style={{ backgroundColor: COLORS.gold }}
+                      >
+                        📋 Copy URL
+                      </button>
+                      <button
+                        onClick={() => window.open(qrUrl, '_blank')}
+                        className="w-full py-2 rounded-lg text-sm font-medium"
+                        style={{ backgroundColor: COLORS.greenPale, color: COLORS.green }}
+                      >
+                        🔗 Open Link
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => setQrEventId(null)}
+                      className="w-full py-2 rounded-lg text-sm font-medium"
+                      style={{ border: `1px solid ${COLORS.line}`, backgroundColor: "white", color: COLORS.charcoal }}
+                    >
+                      Close
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         )}
 
