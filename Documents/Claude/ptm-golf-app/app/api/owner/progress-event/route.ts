@@ -2,6 +2,8 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 
+export const dynamic = 'force-dynamic';
+
 const OWNER_EMAIL = 'andrewtinkler@optusnet.com.au';
 
 // Initialize Firebase Admin
