@@ -1,28 +1,29 @@
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-
 export const dynamic = 'force-dynamic';
 
 const OWNER_EMAIL = 'andrewtinkler@optusnet.com.au';
 
-// Initialize Firebase Admin
-const apps = getApps();
-if (apps.length === 0) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
-    : null;
-
-  if (serviceAccount) {
-    initializeApp({
-      credential: cert(serviceAccount),
-      projectId: process.env.FIREBASE_PROJECT_ID,
-    });
-  }
-}
-
 export async function GET(request: Request) {
   try {
+    // Dynamically import Firebase Admin to avoid ESM issues on Vercel
+    const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+    const { getAuth } = await import('firebase-admin/auth');
+    const { getFirestore } = await import('firebase-admin/firestore');
+
+    // Initialize Firebase Admin
+    const apps = getApps();
+    if (apps.length === 0) {
+      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
+        ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)
+        : null;
+
+      if (serviceAccount) {
+        initializeApp({
+          credential: cert(serviceAccount),
+          projectId: process.env.FIREBASE_PROJECT_ID,
+        });
+      }
+    }
+
     // Get auth header
     const authHeader = request.headers.get('authorization');
     const idToken = authHeader?.replace('Bearer ', '');
