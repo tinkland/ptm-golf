@@ -346,9 +346,28 @@ export default function OwnerDashboard() {
                       className="mb-4 p-4 rounded-lg text-sm border-t space-y-3"
                       style={{ backgroundColor: COLORS.cream, borderColor: COLORS.line }}
                     >
+                      {/* Tournament Progress */}
+                      <div>
+                        <p className="font-medium mb-2" style={{ color: COLORS.green }}>Tournament State</p>
+                        <div className="text-xs space-y-1" style={{ color: COLORS.charcoal }}>
+                          {(() => {
+                            const currentRoundIdx = event.rounds?.findIndex((r: any) => r.id === event.currentRoundId) ?? 0;
+                            const currentRound = event.rounds?.[currentRoundIdx];
+                            return (
+                              <>
+                                <p><strong>Current Round:</strong> {currentRound?.label || 'Not started'} ({currentRoundIdx + 1}/{event.rounds?.length || '?'})</p>
+                                <p style={{ opacity: 0.7 }}>
+                                  {currentRoundIdx === 0 ? '⏳ Setup in progress' : '🎯 Scoring in progress'}
+                                </p>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
                       {/* Configuration Summary */}
                       <div>
-                        <p className="font-medium mb-2" style={{ color: COLORS.green }}>Configuration</p>
+                        <p className="font-medium mb-2" style={{ color: COLORS.green }}>Setup</p>
                         <div className="text-xs grid grid-cols-2 gap-2" style={{ color: COLORS.charcoal }}>
                           <p><strong>Players:</strong> {event.players?.length || 0}</p>
                           <p><strong>Groups:</strong> {event.groups?.length || 0}</p>
