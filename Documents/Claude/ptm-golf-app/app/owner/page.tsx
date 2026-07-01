@@ -28,6 +28,8 @@ export default function OwnerDashboard() {
   const [progressingEventId, setProgressingEventId] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [qrEventId, setQrEventId] = useState<string | null>(null);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [completingEventId, setCompletingEventId] = useState<string | null>(null);
 
   // Check if user is owner
   const isOwner = user?.email === OWNER_EMAIL;
@@ -107,6 +109,40 @@ export default function OwnerDashboard() {
       console.error('Failed to progress event:', err);
     } finally {
       setProgressingEventId(null);
+    }
+  };
+
+  const completeEndOfDay = async (eventId: string) => {
+    try {
+      setCompletingEventId(eventId);
+
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      const idToken = await user.getIdToken();
+
+      const response = await fetch('/api/owner/progress-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ eventId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to complete end-of-day');
+      }
+
+      await fetchEvents();
+      alert('✅ End of day completed! Round progressed.');
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Failed to complete end-of-day:', err);
+    } finally {
+      setCompletingEventId(null);
     }
   };
 
@@ -254,35 +290,65 @@ export default function OwnerDashboard() {
                     >
                       📱 QR Code
                     </button>
-                    {!isLastRound && (
+                    <button
+                      onClick={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
+                      className="flex-1 py-2.5 rounded-lg font-medium text-sm"
+                      style={{
+                        backgroundColor: COLORS.greenPale,
+                        color: COLORS.green,
+                      }}
+                      title="View event details"
+                    >
+                      {expandedEventId === event.id ? '▼' : '▶'} Details
+                    </button>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {expandedEventId === event.id && (
+                    <div
+                      className="mb-4 p-3 rounded-lg text-sm border-t"
+                      style={{ backgroundColor: COLORS.cream, borderColor: COLORS.line }}
+                    >
+                      <p className="font-medium mb-2" style={{ color: COLORS.green }}>Event Configuration</p>
+                      <div className="text-xs space-y-1" style={{ color: COLORS.charcoal }}>
+                        <p><strong>Players:</strong> {event.players?.length || 'N/A'}</p>
+                        <p><strong>Groups:</strong> {event.groups?.length || 'N/A'}</p>
+                        <p><strong>Competitions:</strong> {event.competitions?.length || 'N/A'}</p>
+                        <p><strong>Matches:</strong> {event.matches?.length || 0}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isLastRound && !progressingEventId && (
+                    <div className="flex gap-2">
                       <button
                         onClick={() => progressEvent(event.id)}
                         disabled={progressingEventId === event.id}
-                        className="flex-1 py-2.5 rounded-lg font-medium text-white flex items-center justify-center gap-2"
+                        className="flex-1 py-2.5 rounded-lg font-medium text-white"
                         style={{
                           backgroundColor: progressingEventId === event.id ? COLORS.line : COLORS.gold,
                           opacity: progressingEventId === event.id ? 0.6 : 1,
                         }}
                       >
-                        <span>{nextRound?.label}</span>
-                        <ChevronRight size={16} />
+                        Progress
                       </button>
-                    )}
-                  </div>
-
-                  {!isLastRound && !progressingEventId && (
-                    <button
-                      onClick={() => progressEvent(event.id)}
-                      disabled={progressingEventId === event.id}
-                      className="w-full py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 text-white"
-                      style={{
-                        backgroundColor: progressingEventId === event.id ? COLORS.line : COLORS.gold,
-                        opacity: progressingEventId === event.id ? 0.6 : 1,
-                      }}
-                    >
-                      <span>Progress to {nextRound?.label}</span>
-                      <ChevronRight size={18} />
-                    </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Complete end-of-day and progress to next round?')) {
+                            completeEndOfDay(event.id);
+                          }
+                        }}
+                        disabled={completingEventId === event.id}
+                        className="flex-1 py-2.5 rounded-lg font-medium text-white"
+                        style={{
+                          backgroundColor: completingEventId === event.id ? COLORS.line : COLORS.flag,
+                          opacity: completingEventId === event.id ? 0.6 : 1,
+                        }}
+                        title="If admin can't complete end-of-day"
+                      >
+                        {completingEventId === event.id ? '⏳' : '✅'} End Day
+                      </button>
+                    </div>
                   )}
 
                   {isLastRound && (
