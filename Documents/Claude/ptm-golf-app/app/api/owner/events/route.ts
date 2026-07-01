@@ -38,7 +38,12 @@ export async function GET(request: Request) {
 
     // Check if user is owner
     if (userEmail !== OWNER_EMAIL) {
-      return Response.json({ error: 'Access denied' }, { status: 403 });
+      console.warn(`Access denied: User ${userEmail} is not owner ${OWNER_EMAIL}`);
+      return Response.json({
+        error: 'Access denied',
+        message: `Owner dashboard requires login as ${OWNER_EMAIL}`,
+        currentUser: userEmail,
+      }, { status: 403 });
     }
 
     // Check if Firebase Admin is initialized
