@@ -31,7 +31,8 @@ export default function OwnerDashboard() {
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [completingEventId, setCompletingEventId] = useState<string | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
-  const [scoringProgress, setScoringProgress] = useState<{ [key: string]: number }>({});
+  const [scoringProgress, setScoringProgress] = useState<{ [key: string]: any }>({});
+  const [checkingScoringForEventId, setCheckingScoringForEventId] = useState<string | null>(null);
 
   // Check if user is owner
   const isOwner = user?.email === OWNER_EMAIL;
@@ -114,12 +115,46 @@ export default function OwnerDashboard() {
     }
   };
 
+  const checkRoundScoring = async (eventId: string) => {
+    try {
+      if (!user) return null;
+
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/owner/check-round-scoring', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ eventId }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to check scoring');
+        return null;
+      }
+
+      const data = await response.json();
+      setScoringProgress(prev => ({ ...prev, [eventId]: data }));
+      return data;
+    } catch (err) {
+      console.error('Failed to check scoring:', err);
+      return null;
+    }
+  };
+
   const completeEndOfDay = async (eventId: string) => {
     try {
       setCompletingEventId(eventId);
 
       if (!user) {
         throw new Error('Not authenticated');
+      }
+
+      // Check if scoring has started
+      const scoring = await checkRoundScoring(eventId);
+      if (scoring && scoring.scoreCount === 0) {
+        throw new Error('No scoring has been recorded yet. Start scoring first.');
       }
 
       const idToken = await user.getIdToken();
@@ -345,6 +380,7 @@ export default function OwnerDashboard() {
                     <div
                       className="mb-4 p-4 rounded-lg text-sm border-t space-y-3"
                       style={{ backgroundColor: COLORS.cream, borderColor: COLORS.line }}
+                      onMouseEnter={() => !scoringProgress[event.id] && checkRoundScoring(event.id)}
                     >
                       {/* Tournament Progress */}
                       <div>
@@ -364,6 +400,24 @@ export default function OwnerDashboard() {
                           })()}
                         </div>
                       </div>
+
+                      {/* Scoring Progress */}
+                      {scoringProgress[event.id] && (
+                        <div>
+                          <p className="font-medium mb-2" style={{ color: COLORS.green }}>Scoring Progress</p>
+                          <div className="text-xs space-y-1" style={{ color: COLORS.charcoal }}>
+                            <p>
+                              <strong>Groups with Scores:</strong> {scoringProgress[event.id].groupsWithScores}/{scoringProgress[event.id].totalGroups}
+                            </p>
+                            <p>
+                              <strong>Total Scores:</strong> {scoringProgress[event.id].scoreCount}
+                            </p>
+                            <p style={{ opacity: 0.7 }}>
+                              {scoringProgress[event.id].message}
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Configuration Summary */}
                       <div>
