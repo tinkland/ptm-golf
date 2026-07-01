@@ -215,6 +215,12 @@ export default function OwnerDashboard() {
                     style={{ backgroundColor: COLORS.cream }}
                   >
                     <div className="flex justify-between mb-2">
+                      <span style={{ color: COLORS.charcoal, opacity: 0.7 }}>Event ID:</span>
+                      <span className="font-medium font-mono text-xs" style={{ color: COLORS.charcoal }}>
+                        {event.id}
+                      </span>
+                    </div>
+                    <div className="flex justify-between mb-2">
                       <span style={{ color: COLORS.charcoal, opacity: 0.7 }}>Current Round:</span>
                       <span className="font-medium" style={{ color: COLORS.charcoal }}>
                         {currentRound?.label || 'Unknown'}
