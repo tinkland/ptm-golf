@@ -52,16 +52,36 @@ async function getEventsFromFirestore(idToken: string) {
   const data = await response.json();
   const events = (data.documents || []).map((doc: any) => {
     const fields = doc.fields;
+
+    // Helper to extract values from Firestore REST format
+    const extractArray = (field: any) => field?.arrayValue?.values || [];
+
     return {
       id: doc.name.split('/').pop(),
       eventName: fields.eventName?.stringValue || '',
       adminEmail: fields.adminEmail?.stringValue || '',
       createdAt: fields.createdAt?.timestampValue || new Date().toISOString(),
       currentRoundId: fields.currentRoundId?.stringValue || '',
-      rounds: fields.rounds?.arrayValue?.values?.map((r: any) => ({
+      rounds: extractArray(fields.rounds).map((r: any) => ({
         id: r.mapValue?.fields?.id?.stringValue || '',
         label: r.mapValue?.fields?.label?.stringValue || '',
-      })) || [],
+      })),
+      players: extractArray(fields.players).map((p: any) => ({
+        id: p.mapValue?.fields?.id?.stringValue || '',
+        name: p.mapValue?.fields?.name?.stringValue || '',
+        handicap: p.mapValue?.fields?.handicap?.stringValue || '',
+      })),
+      groups: extractArray(fields.groups).map((g: any) => ({
+        id: g.mapValue?.fields?.id?.stringValue || '',
+        name: g.mapValue?.fields?.name?.stringValue || '',
+        playerIds: extractArray(g.mapValue?.fields?.playerIds),
+      })),
+      competitions: extractArray(fields.competitions).map((c: any) => ({
+        id: c.mapValue?.fields?.id?.stringValue || '',
+        name: c.mapValue?.fields?.name?.stringValue || '',
+        selected: c.mapValue?.fields?.selected?.booleanValue || false,
+      })),
+      matches: extractArray(fields.matches),
     };
   });
 
