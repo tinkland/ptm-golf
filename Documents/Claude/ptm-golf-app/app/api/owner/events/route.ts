@@ -41,6 +41,15 @@ export async function GET(request: Request) {
       return Response.json({ error: 'Access denied' }, { status: 403 });
     }
 
+    // Check if Firebase Admin is initialized
+    if (apps.length === 0) {
+      console.error('Firebase Admin SDK not initialized - FIREBASE_SERVICE_ACCOUNT_KEY not set');
+      return Response.json(
+        { error: 'Firebase Admin SDK not configured on server' },
+        { status: 500 }
+      );
+    }
+
     // Get all events from Firestore
     const db = getFirestore();
     const eventsSnapshot = await db.collection('events').get();
