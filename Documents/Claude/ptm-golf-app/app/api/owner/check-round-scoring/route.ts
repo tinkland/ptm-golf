@@ -70,27 +70,28 @@ export async function POST(request: Request) {
       }
     );
 
-    let allScores = [];
+    let currentRoundScores = [];
     if (scoresResponse.ok) {
       const scoresData = await scoresResponse.json();
-      allScores = (scoresData.documents || []).filter((doc: any) => {
-        return doc.name.includes(`events/${eventId}/scores`);
+      const allScores = scoresData.documents || [];
+
+      // Filter scores by eventId and currentRoundId
+      currentRoundScores = allScores.filter((doc: any) => {
+        const fields = doc.fields;
+        const docEventId = fields.eventId?.stringValue;
+        const docRoundId = fields.roundId?.stringValue;
+        return docEventId === eventId && docRoundId === currentRoundId;
       });
     }
-
-    // Count scores for current round
-    const currentRoundScores = allScores.filter((doc: any) => {
-      const fields = doc.fields;
-      const roundId = fields.roundId?.stringValue;
-      return roundId === currentRoundId;
-    });
 
     // Count groups that have at least one score
     const groupsWithScores = new Set(
       currentRoundScores.map((doc: any) => doc.fields.groupId?.stringValue)
     ).size;
 
-    const totalGroups = fields.groups?.arrayValue?.values?.length || 0;
+    // Get total groups from the current round (not top level)
+    const currentRoundData = rounds.find((r: any) => r.mapValue?.fields?.id?.stringValue === currentRoundId);
+    const totalGroups = currentRoundData?.mapValue?.fields?.groups?.arrayValue?.values?.length || 0;
     const isComplete = groupsWithScores === totalGroups && totalGroups > 0;
 
     return Response.json({

@@ -87,17 +87,22 @@ function totalParOf(course) {
   return course.holes.reduce((s, h) => s + Number(h.par || 0), 0);
 }
 
-function getPH(course, player, allowancePct, handicapSystem = 'whs') {
+function getPH(course, player, allowancePct, handicapSystem = 'whs', playerHandicaps = null) {
   const totalPar = totalParOf(course);
   const rating = course.rating !== "" && course.rating != null ? Number(course.rating) : totalPar;
+  // Use stored round handicap if available, otherwise use current player handicap
+  const handicapIndex = playerHandicaps && playerHandicaps[player.id] !== undefined
+    ? playerHandicaps[player.id]
+    : player.handicapIndex;
+
   if (handicapSystem === 'ga') {
-    const n = Number(player.handicapIndex);
-    if (player.handicapIndex === "" || player.handicapIndex == null || isNaN(n)) return 0;
+    const n = Number(handicapIndex);
+    if (handicapIndex === "" || handicapIndex == null || isNaN(n)) return 0;
     const rawCH = n * (Number(course.slope || 113) / 113) + (rating - totalPar);
-    return Math.floor(rawCH * 0.93);
+    return Math.round(rawCH * 0.93);
   }
-  const ch = courseHandicap(player.handicapIndex, course.slope, rating, totalPar);
-  return playingHandicap(ch, allowancePct);
+  // WHS: daily handicap is the course handicap (no allowance applied)
+  return courseHandicap(handicapIndex, course.slope, rating, totalPar);
 }
 
 // Returns a course-shaped object using the player's assigned tee for this round,
@@ -186,7 +191,7 @@ function computePlayerBestIndexedScore(rounds, player, allowancePct, allScoresBy
 
     // Use per-player tee-adjusted course (same as Stableford)
     const course = getCourseForPlayer(round, player.id);
-    const ph = getPH(course, player, allowancePct, handicapSystem);
+    const ph = getPH(course, player, allowancePct, handicapSystem, round.playerHandicaps);
 
     // Build scoreObj: merge all groups, overlay currentScores for active round
     let scoreObj: any = null;
@@ -239,7 +244,7 @@ function calculateRoundSkins(round, players, allowancePct, scoreObj, handicapSys
     players.forEach((p) => {
       const g = scoreObj?.playerScores?.[p.id]?.[hole.number];
       if (g !== "" && g != null && g !== "PU") { // Exclude pickups
-        const ph = getPH(round.course, p, allowancePct, handicapSystem);
+        const ph = getPH(round.course, p, allowancePct, handicapSystem, round.playerHandicaps);
         const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
         scoresOnHole.push({ playerId: p.id, gross: Number(g), pts });
       }
@@ -344,7 +349,7 @@ function calculateCumulativeSkins(rounds, players, allowancePct, allScoresByRoun
         players.forEach((p) => {
           const g = roundScores?.playerScores?.[p.id]?.[hole.number];
           if (g !== "" && g != null && g !== "PU") {
-            const ph = getPH(round.course, p, allowancePct, handicapSystem);
+            const ph = getPH(round.course, p, allowancePct, handicapSystem, round.playerHandicaps);
             const pts = stablefordPts(g, hole.par, strokesOnHole(ph, hole.si));
             if (pts !== null) {
               scoresOnHole.push({ playerId: p.id, pts });
@@ -602,6 +607,7 @@ function defaultRound(idx) {
     competitions: [],
     bestBallTeams: [],
     groupingMode: "ascending",
+    playerHandicaps: {}, // Maps playerId to handicap at time of round
   };
 }
 
@@ -1543,11 +1549,20 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
       }
     }
 
+    // Capture current player handicaps for each round
+    const playerHandicapMap = {};
+    players.forEach((p) => {
+      if (p.id && p.handicapIndex !== undefined) {
+        playerHandicapMap[p.id] = p.handicapIndex;
+      }
+    });
+
     // Update each round to enable/disable joker based on games selection
     const updatedRounds = rounds.map((r) => ({
       ...r,
       jokerEnabled: (r.games || []).some((g) => g.templateId === "joker"),
       jokerBonusAppliesOverall: r.jokerBonusAppliesOverall !== false, // Preserve setting, default to true
+      playerHandicaps: { ...playerHandicapMap }, // Store handicaps with round
     }));
 
     const config = {
@@ -1793,19 +1808,14 @@ function SetupForm({ initialConfig, onSave, onCancel = null, isAdmin, onAdminDon
         </SectionCard>
       </div>
 
-      <div className="flex gap-1 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         {rounds.map((r, i) => (
           <button
             key={r.id}
             onClick={() => {
-              const error = validateCourseIndexes(rounds[roundTab]);
-              if (error) {
-                alert(`Round ${rounds[roundTab].label}: ${error}`);
-                return;
-              }
               setRoundTab(i);
             }}
-            className="flex-1 py-2 rounded-lg text-sm font-medium"
+            className="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
             style={{ backgroundColor: roundTab === i ? COLORS.green : "white", color: roundTab === i ? "white" : COLORS.charcoal, border: `1px solid ${COLORS.line}` }}
           >
             {r.label}
@@ -2583,6 +2593,36 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
     })
     .sort((a, b) => b.raw - a.raw);
 
+  // Get overall tournament leaderboard (all rounds combined)
+  const overallLeaderboard = config.players
+    .filter((p) => p.name)
+    .map((p) => {
+      let totalRaw = 0;
+      let totalDayTotal = 0;
+      config.rounds.forEach((round) => {
+        if (round.excludeFromOverall) return;
+        const group = getPlayerGroup(round, p.id);
+        let scoreObj = null;
+        if (round.id === dayOneRound.id) {
+          if (group && allScores && allScores[group.id]) {
+            scoreObj = allScores[group.id];
+          } else if (group && currentScores && currentScores.playerScores) {
+            scoreObj = currentScores;
+          }
+        } else {
+          const preserved = propAllScoresByRound[`${round.id}_preserved`];
+          scoreObj = preserved || (group ? propAllScoresByRound[round.id]?.[group.id] : null) || null;
+        }
+        if (scoreObj) {
+          const stats = computePlayerRoundStats(round, p, allowance, scoreObj, config.handicapSystem);
+          totalRaw += stats.raw;
+          totalDayTotal += round.jokerBonusAppliesOverall !== false ? stats.dayTotal : stats.raw;
+        }
+      });
+      return { player: p, raw: totalRaw, dayTotal: totalDayTotal };
+    })
+    .sort((a, b) => b.dayTotal - a.dayTotal);
+
   // Get on-course games - any game with holes configured
   const dailyGameIds = ["sandy-saver", "snake", "joker"];
   const onCourseGames = dayOneRound.games?.filter((g) => !dailyGameIds.includes(g.templateId) && g.holes && Array.isArray(g.holes) && g.holes.length > 0) || [];
@@ -2869,11 +2909,11 @@ function EndOfDayProcessing({ config, dayOneRound, dayTwoRound, allScores, allSc
                 </div>
                 {group.playerIds.map(pid => {
                   const player = config.players.find(p => p.id === pid);
-                  const scoreEntry = leaderboard.find(e => e.player.id === pid);
+                  const scoreEntry = overallLeaderboard.find(e => e.player.id === pid);
                   return (
                     <div key={pid} className="flex items-center gap-2 px-3 py-2 border-t" style={{ borderColor: COLORS.line }}>
                       <span className="flex-1 text-sm" style={{ color: COLORS.charcoal }}>{player?.name || pid}</span>
-                      <span className="text-xs mr-1" style={{ color: COLORS.gold }}>{scoreEntry?.raw ?? "—"} pts</span>
+                      <span className="text-xs mr-1" style={{ color: COLORS.gold }}>{scoreEntry?.dayTotal ?? "—"} pts</span>
                       <select
                         value={group.id}
                         onChange={e => {
@@ -3287,8 +3327,19 @@ function ScoreTab({ config, round, groupId, scores, onScoreChange, onCelebrate, 
                   setHole((h) => Math.min(TOTAL_HOLES, h + 1));
                 }
               }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                if (!allPlayersScored) return;
+                if (allHolesScored) {
+                  onFinish?.();
+                } else if (isLastHole) {
+                  setHole(1);
+                } else {
+                  setHole((h) => Math.min(TOTAL_HOLES, h + 1));
+                }
+              }}
               disabled={buttonDisabled}
-              className="flex-1 rounded-lg py-3 font-medium text-sm"
+              className="flex-1 rounded-lg py-3 font-medium text-sm touch-none active:opacity-50"
               style={{
                 backgroundColor: !buttonDisabled ? COLORS.green : COLORS.charcoal,
                 color: "white",
@@ -5031,43 +5082,52 @@ export default function GolfApp({ userId, isAdmin, onAdminDone, adminLimits, ini
 
   // Step 1: called from ScoreTab "Finish Round" — loads scores then shows end-of-round games entry
   const handleFinishRound = async () => {
-    if (isLoadingRoundRef.current) return;
+    if (isLoadingRoundRef.current) {
+      alert("Round is already being processed. Please wait...");
+      return;
+    }
     isLoadingRoundRef.current = true;
 
-    // Refresh all scores before showing end-of-round games / end-of-day processing
-    if (eventId && config) {
-      const result = {};
-      for (const r of config.rounds) {
-        result[r.id] = {};
-        for (const g of r.groups) {
-          try {
-            const key = `golf-scores-${eventId}-${r.id}`;
-            const stored = localStorage.getItem(key);
-            if (stored) {
-              result[r.id][g.id] = JSON.parse(stored);
-            } else {
-              result[r.id][g.id] = await getScoresFromFirebase(eventId, r.id, g.id);
+    try {
+      // Refresh all scores before showing end-of-round games / end-of-day processing
+      if (eventId && config) {
+        const result = {};
+        for (const r of config.rounds) {
+          result[r.id] = {};
+          for (const g of r.groups) {
+            try {
+              const key = `golf-scores-${eventId}-${r.id}`;
+              const stored = localStorage.getItem(key);
+              if (stored) {
+                result[r.id][g.id] = JSON.parse(stored);
+              } else {
+                result[r.id][g.id] = await getScoresFromFirebase(eventId, r.id, g.id);
+              }
+            } catch (err) {
+              console.warn(`Could not load scores for ${r.id}/${g.id}:`, err);
+              result[r.id][g.id] = { playerScores: {}, jokerHoles: {} };
             }
-          } catch (err) {
-            console.warn(`Could not load scores for ${r.id}/${g.id}:`, err);
-            result[r.id][g.id] = { playerScores: {}, jokerHoles: {} };
           }
         }
+        loadedScoresRef.current = result;
+        try {
+          localStorage.setItem(`golf-scores-${eventId}`, JSON.stringify(result));
+        } catch (e) {
+          console.warn("Could not save to localStorage:", e);
+        }
+        setAllScoresByRound(result);
       }
-      loadedScoresRef.current = result;
-      try {
-        localStorage.setItem(`golf-scores-${eventId}`, JSON.stringify(result));
-      } catch (e) {
-        console.warn("Could not save to localStorage:", e);
-      }
-      setAllScoresByRound(result);
-    }
 
-    isLoadingRoundRef.current = false;
-    if (config?.signaturesRequired) {
-      setShowSignatureCapture(true);
-    } else {
-      handleScoringsFinished();
+      if (config?.signaturesRequired) {
+        setShowSignatureCapture(true);
+      } else {
+        handleScoringsFinished();
+      }
+    } catch (err) {
+      console.error("Error finishing round:", err);
+      alert(`Error finishing round: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      isLoadingRoundRef.current = false;
     }
   };
 

@@ -36,15 +36,18 @@ export default function OwnerDashboard() {
 
   // Check if user is owner
   const isOwner = user?.email === OWNER_EMAIL;
+  const isAuthLoading = !user; // Still waiting for auth to complete
 
   useEffect(() => {
-    if (!isOwner) {
+    if (user && !isOwner) {
       setError('Access denied. Owner login required.');
       setLoading(false);
       return;
     }
 
-    fetchEvents();
+    if (isOwner) {
+      fetchEvents();
+    }
   }, [isOwner, user?.uid]);
 
   const fetchEvents = async () => {
@@ -130,7 +133,11 @@ export default function OwnerDashboard() {
       });
 
       if (!response.ok) {
-        console.error('Failed to check scoring');
+        if (response.status === 404) {
+          // Event not found (may have been deleted), silently ignore
+          return null;
+        }
+        console.error('Failed to check scoring:', response.status, response.statusText);
         return null;
       }
 
@@ -187,14 +194,24 @@ export default function OwnerDashboard() {
     try {
       setDeletingEventId(eventId);
 
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      const idToken = await user.getIdToken();
+
       const response = await fetch('/api/delete-event', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
         body: JSON.stringify({ eventId }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete event');
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete event');
       }
 
       await fetchEvents();
@@ -217,6 +234,16 @@ export default function OwnerDashboard() {
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  if (isAuthLoading) {
+    return (
+      <div style={{ backgroundColor: COLORS.cream, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+        <div className="text-center">
+          <p style={{ color: COLORS.charcoal, opacity: 0.6 }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isOwner) {
     return (
@@ -389,11 +416,30 @@ export default function OwnerDashboard() {
                           {(() => {
                             const currentRoundIdx = event.rounds?.findIndex((r: any) => r.id === event.currentRoundId) ?? 0;
                             const currentRound = event.rounds?.[currentRoundIdx];
+                            const progress = scoringProgress[event.id];
+
+                            // Determine status based on scoring progress
+                            let statusEmoji = '⏳';
+                            let statusText = 'Awaiting scores';
+
+                            if (progress) {
+                              if (progress.scoreCount === 0) {
+                                statusEmoji = '⏳';
+                                statusText = 'Awaiting scores';
+                              } else if (progress.groupsWithScores < progress.totalGroups) {
+                                statusEmoji = '🎯';
+                                statusText = 'Scoring in progress';
+                              } else if (progress.groupsWithScores === progress.totalGroups && progress.totalGroups > 0) {
+                                statusEmoji = '✅';
+                                statusText = 'Complete';
+                              }
+                            }
+
                             return (
                               <>
                                 <p><strong>Current Round:</strong> {currentRound?.label || 'Not started'} ({currentRoundIdx + 1}/{event.rounds?.length || '?'})</p>
                                 <p style={{ opacity: 0.7 }}>
-                                  {currentRoundIdx === 0 ? '⏳ Setup in progress' : '🎯 Scoring in progress'}
+                                  {statusEmoji} {statusText}
                                 </p>
                               </>
                             );
@@ -437,7 +483,7 @@ export default function OwnerDashboard() {
                           <div className="text-xs max-h-40 overflow-y-auto" style={{ color: COLORS.charcoal }}>
                             {event.players.map((p: any) => (
                               <div key={p.id} className="py-0.5">
-                                {p.name} <span style={{ opacity: 0.6 }}>({p.handicap})</span>
+                                {p.name} <span style={{ opacity: 0.6 }}>({p.handicapIndex})</span>
                               </div>
                             ))}
                           </div>

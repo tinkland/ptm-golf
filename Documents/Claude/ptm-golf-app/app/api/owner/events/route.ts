@@ -36,8 +36,9 @@ async function verifyIdToken(idToken: string) {
 async function getEventsFromFirestore(idToken: string) {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/events`,
+  // First, list all event documents
+  const listResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/events?pageSize=100`,
     {
       headers: {
         'Authorization': `Bearer ${idToken}`,
@@ -45,19 +46,51 @@ async function getEventsFromFirestore(idToken: string) {
     }
   );
 
-  if (!response.ok) {
+  if (!listResponse.ok) {
     throw new Error('Failed to fetch events');
   }
 
-  const data = await response.json();
-  const events = (data.documents || []).map((doc: any) => {
-    const fields = doc.fields;
+  const listData = await listResponse.json();
+  const eventDocs = listData.documents || [];
+
+  // For each event, fetch the full document to get all nested fields
+  const events = [];
+  for (const doc of eventDocs) {
+    const eventId = doc.name.split('/').pop();
+
+    // Fetch the full document directly
+    const fullDocResponse = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/events/${eventId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      }
+    );
+
+    if (!fullDocResponse.ok) {
+      console.warn(`Failed to fetch full document for event ${eventId}`);
+      continue;
+    }
+
+    const fullDoc = await fullDocResponse.json();
+    const fields = fullDoc.fields;
+
+    // Log what we're getting from Firestore for debugging
+    console.error('Firestore fields for event', eventId, {
+      hasGroups: !!fields.groups,
+      groupsValue: fields.groups,
+      hasCompetitions: !!fields.competitions,
+      competitionsValue: fields.competitions,
+      hasMatches: !!fields.matches,
+      matchesValue: fields.matches,
+    });
 
     // Helper to extract values from Firestore REST format
     const extractArray = (field: any) => field?.arrayValue?.values || [];
 
-    return {
-      id: doc.name.split('/').pop(),
+    events.push({
+      id: eventId,
       eventName: fields.eventName?.stringValue || '',
       adminEmail: fields.adminEmail?.stringValue || '',
       createdAt: fields.createdAt?.timestampValue || new Date().toISOString(),
@@ -69,21 +102,45 @@ async function getEventsFromFirestore(idToken: string) {
       players: extractArray(fields.players).map((p: any) => ({
         id: p.mapValue?.fields?.id?.stringValue || '',
         name: p.mapValue?.fields?.name?.stringValue || '',
-        handicap: p.mapValue?.fields?.handicap?.stringValue || '',
-      })),
-      groups: extractArray(fields.groups).map((g: any) => ({
-        id: g.mapValue?.fields?.id?.stringValue || '',
-        name: g.mapValue?.fields?.name?.stringValue || '',
-        playerIds: extractArray(g.mapValue?.fields?.playerIds),
-      })),
-      competitions: extractArray(fields.competitions).map((c: any) => ({
-        id: c.mapValue?.fields?.id?.stringValue || '',
-        name: c.mapValue?.fields?.name?.stringValue || '',
-        selected: c.mapValue?.fields?.selected?.booleanValue || false,
-      })),
-      matches: extractArray(fields.matches),
-    };
-  });
+        handicapIndex: p.mapValue?.fields?.handicapIndex?.stringValue || '',
+      })).filter((p: any) => p.id || p.name),
+      groups: (() => {
+        const currentRoundId = fields.currentRoundId?.stringValue;
+        const rounds = extractArray(fields.rounds);
+        const currentRound = rounds.find((r: any) => r.mapValue?.fields?.id?.stringValue === currentRoundId);
+        if (!currentRound) return [];
+        return extractArray(currentRound.mapValue?.fields?.groups).map((g: any) => {
+          const groupFields = g.mapValue?.fields || {};
+          return {
+            id: groupFields.id?.stringValue || '',
+            name: groupFields.name?.stringValue || '',
+            playerIds: extractArray(groupFields.playerIds).map((pid: any) => pid.stringValue).filter(Boolean),
+          };
+        }).filter((g: any) => g.id || g.name);
+      })(),
+      competitions: (() => {
+        const currentRoundId = fields.currentRoundId?.stringValue;
+        const rounds = extractArray(fields.rounds);
+        const currentRound = rounds.find((r: any) => r.mapValue?.fields?.id?.stringValue === currentRoundId);
+        if (!currentRound) return [];
+        return extractArray(currentRound.mapValue?.fields?.competitions).map((c: any) => {
+          if (typeof c.stringValue === 'string') {
+            return { id: c.stringValue, name: c.stringValue, selected: true };
+          }
+          const compFields = c.mapValue?.fields || {};
+          return {
+            id: compFields.id?.stringValue || '',
+            name: compFields.name?.stringValue || '',
+            selected: compFields.selected?.booleanValue || true,
+          };
+        }).filter((c: any) => c.id || c.name);
+      })(),
+      matches: extractArray(fields.matches).map((m: any) => ({
+        id: m.mapValue?.fields?.id?.stringValue || '',
+        name: m.mapValue?.fields?.name?.stringValue || '',
+      })).filter((m: any) => m.id || m.name), // Only include valid matches
+    });
+  }
 
   // Sort by creation date (newest first)
   return events.sort((a: any, b: any) => {
@@ -117,7 +174,13 @@ export async function GET(request: Request) {
     // Get events from Firestore
     const events = await getEventsFromFirestore(idToken);
 
-    return Response.json({ events });
+    return Response.json({ events }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error) {
     console.error('Get events error:', error);
     return Response.json(
