@@ -36,8 +36,20 @@ export async function GET(request: Request) {
     const decodedToken = await auth.verifyIdToken(idToken);
     const userEmail = decodedToken.email;
 
-    // Check if user is owner
-    if (userEmail !== OWNER_EMAIL) {
+    // Debug logging
+    console.log('Owner check:', {
+      userEmail: userEmail,
+      userEmailLength: userEmail?.length,
+      ownerEmail: OWNER_EMAIL,
+      ownerEmailLength: OWNER_EMAIL.length,
+      match: userEmail === OWNER_EMAIL,
+      userEmailLower: userEmail?.toLowerCase(),
+      ownerEmailLower: OWNER_EMAIL.toLowerCase(),
+      matchLower: userEmail?.toLowerCase() === OWNER_EMAIL.toLowerCase(),
+    });
+
+    // Check if user is owner (case-insensitive)
+    if (userEmail?.toLowerCase() !== OWNER_EMAIL.toLowerCase()) {
       console.warn(`Access denied: User ${userEmail} is not owner ${OWNER_EMAIL}`);
       return Response.json({
         error: 'Access denied',
