@@ -1,4 +1,3 @@
-import { Resend } from 'resend';
 import { eventSetupCompleteEmail } from '@/lib/email-templates';
 
 export async function POST(request: Request) {
@@ -23,29 +22,36 @@ export async function POST(request: Request) {
       links,
     });
 
-    // Initialize Resend inside the handler, not at module level
-    const resend = new Resend(process.env.RESEND_API_KEY);
-
-    // Send to admin email with BCC to owner
-    const emailResult = await resend.emails.send({
-      from: 'PTM Golf <noreply@ptmgolf.com>',
-      to: adminEmail,
-      bcc: ['andrewtinkler@optusnet.com.au'],
-      subject: `${eventName} - Event Setup Complete! 🏌️`,
-      html: htmlContent,
+    // Use Resend REST API instead of SDK (Vercel compatibility)
+    const emailResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'PTM Golf <noreply@ptmgolf.com>',
+        to: adminEmail,
+        bcc: ['andrewtinkler@optusnet.com.au'],
+        subject: `${eventName} - Event Setup Complete! 🏌️`,
+        html: htmlContent,
+      }),
     });
 
-    if (emailResult.error) {
-      console.error('Failed to send event email:', emailResult.error);
+    if (!emailResponse.ok) {
+      const errorData = await emailResponse.json();
+      console.error('Failed to send event email:', errorData);
       return Response.json(
         { error: 'Failed to send email' },
         { status: 500 }
       );
     }
 
+    const emailResult = await emailResponse.json();
+
     return Response.json({
       success: true,
-      emailId: emailResult.data?.id,
+      emailId: emailResult.id,
     });
   } catch (error) {
     console.error('Send event email error:', error);
